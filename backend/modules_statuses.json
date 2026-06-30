@@ -1,0 +1,12 @@
+{
+    "Inventory": true,
+    "Monitoring": true,
+    "SSL": true,
+    "Technology": true,
+    "Security": true,
+    "Notifications": true,
+    "Reports": true,
+    "Auth": true,
+    "Audit": true,
+    "Dashboard": true
+}

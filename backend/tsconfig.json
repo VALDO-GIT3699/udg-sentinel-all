@@ -1,0 +1,40 @@
+{
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "allowJs": false,
+    "skipLibCheck": true,
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["resources/js/*"],
+      "@types/*": ["resources/js/types/*"],
+      "@components/*": ["resources/js/components/*"],
+      "@composables/*": ["resources/js/composables/*"],
+      "@utils/*": ["resources/js/utils/*"]
+    },
+    "types": ["node", "vite/client"]
+  },
+  "include": [
+    "resources/js/**/*.ts",
+    "resources/js/**/*.vue",
+    "resources/js/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "public",
+    "storage",
+    "vendor"
+  ]
+}

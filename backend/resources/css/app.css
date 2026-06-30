@@ -1,0 +1,122 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.vue';
+@source '../../Modules/**/resources/**/*.vue';
+
+/* ── Tema UDG Sentinel ─────────────────────────────────────── */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+
+  /* Grises base (fondo oscuro tipo Datadog/Grafana) */
+  --color-gray-950: #0b0f1a;
+  --color-gray-900: #111827;
+  --color-gray-850: #161d2e;
+  --color-gray-800: #1e2535;
+  --color-gray-750: #252d40;
+  --color-gray-700: #2e3a50;
+  --color-gray-600: #3d4f6a;
+  --color-gray-500: #5a6e8a;
+  --color-gray-400: #8ba3be;
+  --color-gray-300: #afc3d4;
+  --color-gray-200: #cddce8;
+  --color-gray-100: #e8f0f7;
+  --color-gray-50: #f4f8fc;
+
+  /* Colores de estado */
+  --color-up: #22c55e;       /* verde — sitio activo */
+  --color-down: #ef4444;     /* rojo — sitio caído */
+  --color-degraded: #f59e0b; /* amarillo — degradado */
+  --color-unknown: #6b7280;  /* gris — desconocido */
+
+  /* Scores */
+  --color-score-excellent: #22c55e;
+  --color-score-good: #3b82f6;
+  --color-score-medium: #f59e0b;
+  --color-score-low: #f97316;
+  --color-score-critical: #ef4444;
+
+  /* Brand UDG */
+  --color-udg-blue: #003B7E;
+  --color-udg-green: #00843D;
+
+  /* Accent principal */
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+}
+
+/* ── Estilos base ──────────────────────────────────────────── */
+@layer base {
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-gray-950 text-gray-100 antialiased;
+  }
+
+  /* Scrollbar personalizado */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-900;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-700 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-600;
+  }
+}
+
+/* ── Componentes reutilizables ─────────────────────────────── */
+@layer components {
+  /* Badge de estado de sitio */
+  .badge-up {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20;
+  }
+
+  .badge-down {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20;
+  }
+
+  .badge-degraded {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20;
+  }
+
+  .badge-unknown {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-500/10 text-gray-400 border border-gray-500/20;
+  }
+
+  /* Tarjeta base del dashboard */
+  .card {
+    @apply bg-gray-900 border border-gray-800 rounded-xl p-5;
+  }
+
+  .card-header {
+    @apply flex items-center justify-between mb-4;
+  }
+
+  /* Indicador de score */
+  .score-excellent { @apply text-green-400; }
+  .score-good      { @apply text-blue-400; }
+  .score-medium    { @apply text-amber-400; }
+  .score-low       { @apply text-orange-400; }
+  .score-critical  { @apply text-red-400; }
+}
+
+@source "../**/*.js";
+@source "../**/*.vue";
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+}

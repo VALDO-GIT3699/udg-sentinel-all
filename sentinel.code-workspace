@@ -1,0 +1,293 @@
+{
+  "folders": [
+    {
+      "name": "🔭 UDG Sentinel — Raíz",
+      "path": "."
+    },
+    {
+      "name": "⚙️ Backend (Laravel 12)",
+      "path": "./backend"
+    },
+    {
+      "name": "📦 Collectors",
+      "path": "./collectors"
+    },
+    {
+      "name": "🐳 Infraestructura",
+      "path": "./infrastructure"
+    },
+    {
+      "name": "📚 Documentación",
+      "path": "./docs"
+    },
+    {
+      "name": "🧪 Tests E2E",
+      "path": "./tests"
+    }
+  ],
+  "settings": {
+    // ── Editor ──────────────────────────────────
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.rulers": [120],
+    "editor.bracketPairColorization.enabled": true,
+    "editor.guides.bracketPairs": true,
+    "editor.wordWrap": "off",
+
+    // ── PHP ──────────────────────────────────────
+    "[php]": {
+      "editor.defaultFormatter": "junstyle.php-cs-fixer",
+      "editor.formatOnSave": true,
+      "editor.tabSize": 4
+    },
+    "php.validate.enable": true,
+    "php.validate.executablePath": "php",
+    "phpcs.enable": true,
+    "php-cs-fixer.executablePath": "${workspaceFolder:⚙️ Backend (Laravel 12)}/vendor/bin/pint",
+    "intelephense.environment.phpVersion": "8.2.0",
+    "intelephense.files.maxSize": 5000000,
+
+    // ── TypeScript / Vue ──────────────────────────
+    "[typescript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
+      "editor.tabSize": 2
+    },
+    "[vue]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
+      "editor.tabSize": 2
+    },
+    "[javascript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
+      "editor.tabSize": 2
+    },
+    "typescript.tsdk": "backend/node_modules/typescript/lib",
+    "vue.server.hybridMode": true,
+
+    // ── Tailwind CSS ──────────────────────────────
+    "tailwindCSS.includeLanguages": {
+      "php": "html",
+      "blade": "html"
+    },
+    "tailwindCSS.experimental.classRegex": [
+      ["class=\"([^\"]*)", "([^\"]+)"]
+    ],
+
+    // ── Git ───────────────────────────────────────
+    "git.autofetch": true,
+    "git.confirmSync": false,
+    "git.defaultBranchName": "main",
+    "git.branchProtection": ["main"],
+    "git.branchProtectionPrompt": "alwaysCommitToNewBranch",
+
+    // ── Archivos ──────────────────────────────────
+    "files.exclude": {
+      "**/vendor/**": true,
+      "**/node_modules/**": true,
+      "**/.git": false,
+      "**/storage/framework/**": true,
+      "**/bootstrap/cache/**": true,
+      "**/.phpunit.cache": true
+    },
+    "search.exclude": {
+      "**/vendor/**": true,
+      "**/node_modules/**": true,
+      "**/public/build/**": true,
+      "**/storage/**": true,
+      "**/bootstrap/cache/**": true
+    },
+    "files.watcherExclude": {
+      "**/vendor/**": true,
+      "**/node_modules/**": true,
+      "**/storage/**": true,
+      "**/public/build/**": true
+    },
+    "files.associations": {
+      "*.blade.php": "blade",
+      ".env.example": "dotenv",
+      ".env.*": "dotenv",
+      "docker-compose*.yml": "dockercompose"
+    },
+
+    // ── Docker ────────────────────────────────────
+    "docker.defaultRegistryPath": "ghcr.io/udg",
+
+    // ── Otros ─────────────────────────────────────
+    "emmet.includeLanguages": {
+      "blade": "html",
+      "vue": "html"
+    },
+    "breadcrumbs.enabled": true,
+    "workbench.editor.enablePreview": false,
+    "explorer.confirmDelete": false,
+    "explorer.confirmDragAndDrop": false
+  },
+  "extensions": {
+    "recommendations": [
+      // PHP
+      "bmewburn.vscode-intelephense-client",
+      "junstyle.php-cs-fixer",
+      "devsense.phptools-vscode",
+      "MehediDracula.php-namespace-resolver",
+      "onecentlin.laravel5-snippets",
+      "amiralizadeh9480.laravel-extra-intellisense",
+      "ryannaddy.laravel-artisan",
+
+      // Vue / TypeScript
+      "Vue.volar",
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode",
+      "bradlc.vscode-tailwindcss",
+
+      // Git
+      "eamodio.gitlens",
+      "mhutchie.git-graph",
+      "GitHub.vscode-pull-request-github",
+
+      // Docker
+      "ms-azuretools.vscode-docker",
+
+      // Base de datos
+      "cweijan.vscode-postgresql-client2",
+
+      // General
+      "editorconfig.editorconfig",
+      "christian-kohler.path-intellisense",
+      "streetsidesoftware.code-spell-checker",
+      "streetsidesoftware.code-spell-checker-spanish",
+      "usernamehw.errorlens",
+      "mikestead.dotenv",
+      "ms-vscode.vscode-json",
+      "redhat.vscode-yaml",
+      "tamasfe.even-better-toml"
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "🚀 Iniciar servidor de desarrollo",
+        "type": "shell",
+        "command": "php artisan serve --host=0.0.0.0 --port=8000",
+        "options": {
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+        },
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "dedicated",
+          "group": "dev-servers"
+        },
+        "isBackground": true,
+        "problemMatcher": []
+      },
+      {
+        "label": "🎨 Vite (assets en tiempo real)",
+        "type": "shell",
+        "command": "npm run dev",
+        "options": {
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+        },
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "dedicated",
+          "group": "dev-servers"
+        },
+        "isBackground": true,
+        "problemMatcher": []
+      },
+      {
+        "label": "⚡ Laravel Horizon (colas)",
+        "type": "shell",
+        "command": "php artisan horizon",
+        "options": {
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+        },
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "dedicated",
+          "group": "dev-servers"
+        },
+        "isBackground": true,
+        "problemMatcher": []
+      },
+      {
+        "label": "🧪 Ejecutar pruebas (PHPUnit)",
+        "type": "shell",
+        "command": "php artisan test --parallel",
+        "options": {
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+        },
+        "group": {
+          "kind": "test",
+          "isDefault": true
+        },
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "🔍 PHPStan (análisis estático)",
+        "type": "shell",
+        "command": "./vendor/bin/phpstan analyse --level=8 --memory-limit=512M",
+        "options": {
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+        },
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "💅 Pint (formateo PHP)",
+        "type": "shell",
+        "command": "./vendor/bin/pint",
+        "options": {
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+        },
+        "group": "build"
+      },
+      {
+        "label": "🐳 Docker: Levantar entorno",
+        "type": "shell",
+        "command": "docker compose -f infrastructure/docker/docker-compose.yml up -d",
+        "options": {
+          "cwd": "${workspaceFolder:🔭 UDG Sentinel — Raíz}"
+        },
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "🔄 Migraciones y seeders",
+        "type": "shell",
+        "command": "php artisan migrate:fresh --seed",
+        "options": {
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+        },
+        "group": "build"
+      }
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "🐛 PHP Debug (Xdebug)",
+        "type": "php",
+        "request": "launch",
+        "port": 9003,
+        "pathMappings": {
+          "/var/www/html": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+        }
+      }
+    ]
+  }
+}

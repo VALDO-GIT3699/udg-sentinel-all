@@ -1,0 +1,31 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    paths:
+        - app
+        - Modules
+
+    level: 8
+
+    # Rutas de los módulos
+    scanDirectories:
+        - Modules
+
+    excludePaths:
+        - vendor
+        - storage
+        - bootstrap/cache
+        - database
+
+    # Ignorar errores de métodos mágicos de Laravel
+    treatPhpDocTypesAsCertain: false
+
+    # Permitir propiedades dinámicas en modelos Eloquent
+    checkModelProperties: true
+    checkMissingIterableValueType: false
+
+    ignoreErrors:
+        # Métodos mágicos de Eloquent que PHPStan no puede inferir
+        - '#Call to an undefined method Illuminate\\Database\\Eloquent\\Builder#'
+        - '#PHPDoc tag @var#'

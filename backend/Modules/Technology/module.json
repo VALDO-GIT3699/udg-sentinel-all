@@ -1,0 +1,11 @@
+{
+    "name": "Technology",
+    "alias": "technology",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Technology\\Providers\\TechnologyServiceProvider"
+    ],
+    "files": []
+}
