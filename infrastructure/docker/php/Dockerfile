@@ -46,7 +46,10 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 RUN apk add --no-cache nodejs npm
 
 # ── Configuración PHP para producción ────────
-COPY php.ini /usr/local/etc/php/conf.d/custom.ini
+
+#COPY php.ini /usr/local/etc/php/conf.d/custom.ini
+#COPY ./php/php.ini /usr/local/etc/php/conf.d/custom.ini
+COPY infrastructure/docker/php/php.ini /usr/local/etc/php/conf.d/custom.ini
 
 # ── Usuario no-root ───────────────────────────
 RUN addgroup -g 1000 -S www && \

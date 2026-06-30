@@ -11,8 +11,8 @@ services:
   # ──────────────────────────────────────────────
   app:
     build:
-      context: ../../backend
-      dockerfile: ../infrastructure/docker/php/Dockerfile
+      context: ../../
+      dockerfile: infrastructure/docker/php/Dockerfile
     container_name: sentinel_app
     restart: unless-stopped
     working_dir: /var/www/html
@@ -104,8 +104,8 @@ services:
   # ──────────────────────────────────────────────
   horizon:
     build:
-      context: ../../backend
-      dockerfile: ../infrastructure/docker/php/Dockerfile
+      context: ../../
+      dockerfile: infrastructure/docker/php/Dockerfile
     container_name: sentinel_horizon
     restart: unless-stopped
     working_dir: /var/www/html
@@ -124,8 +124,8 @@ services:
   # ──────────────────────────────────────────────
   scheduler:
     build:
-      context: ../../backend
-      dockerfile: ../infrastructure/docker/php/Dockerfile
+      context: ../../
+      dockerfile: infrastructure/docker/php/Dockerfile
     container_name: sentinel_scheduler
     restart: unless-stopped
     working_dir: /var/www/html
