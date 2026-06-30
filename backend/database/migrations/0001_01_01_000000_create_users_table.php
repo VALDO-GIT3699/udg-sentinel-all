@@ -15,8 +15,16 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
+            $table->timestampTz('email_verified_at')->nullable();
+            $table->string('password')->nullable()->comment('Null si el usuario usa SSO');
+            $table->string('avatar', 500)->nullable();
+            $table->string('department')->nullable()->comment('Dependencia UDG');
+            $table->boolean('is_active')->default(true);
+            $table->timestampTz('last_login_at')->nullable();
+            // 2FA (Laravel Fortify compatible)
+            $table->text('two_factor_secret')->nullable();
+            $table->text('two_factor_recovery_codes')->nullable();
+            $table->timestampTz('two_factor_confirmed_at')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });
