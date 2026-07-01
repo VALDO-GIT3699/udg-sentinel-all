@@ -20,7 +20,7 @@ final class SiteDownNotification extends Notification
         private readonly string $severity,
         private readonly string $detectedAtIso,
         private readonly int $alertId,
-        private readonly string $message,
+        private readonly string $incidentMessage,
     ) {
     }
 
@@ -44,7 +44,7 @@ final class SiteDownNotification extends Notification
                 'severity' => $this->severity,
                 'detectedAtIso' => $this->detectedAtIso,
                 'alertId' => $this->alertId,
-                'message' => $this->message,
+                'incidentMessage' => $this->incidentMessage,
             ]);
     }
 
@@ -61,7 +61,7 @@ final class SiteDownNotification extends Notification
             'current_status' => $this->currentStatus,
             'severity' => $this->severity,
             'detected_at' => $this->detectedAtIso,
-            'message' => $this->message,
+            'message' => $this->incidentMessage,
         ];
     }
 

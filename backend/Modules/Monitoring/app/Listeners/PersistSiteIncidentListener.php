@@ -62,15 +62,31 @@ final class PersistSiteIncidentListener
         ]);
 
         if ($severity === 'critical') {
-            $this->notifyCriticalIncident($alert, $site, $previousStatus, $nextStatus, $detectedAt);
+            try {
+                $this->notifyCriticalIncident($alert, $site, $previousStatus, $nextStatus, $detectedAt);
+            } catch (\Throwable $exception) {
+                Log::warning('No se pudo notificar incidente critico por correo.', [
+                    'site_id' => $site->id,
+                    'alert_id' => $alert->id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
 
-            // Mantiene compatibilidad con canales legacy (Slack/Webhook + tracking de envios).
-            $this->alertNotificationService->dispatch($alert, [
-                'trigger' => 'site_down_critical',
-                'site_status_before' => $previousStatus,
-                'site_status_after' => $nextStatus,
-                'detected_at' => $detectedAt->toIso8601String(),
-            ]);
+            try {
+                // Mantiene compatibilidad con canales legacy (Slack/Webhook + tracking de envios).
+                $this->alertNotificationService->dispatch($alert, [
+                    'trigger' => 'site_down_critical',
+                    'site_status_before' => $previousStatus,
+                    'site_status_after' => $nextStatus,
+                    'detected_at' => $detectedAt->toIso8601String(),
+                ]);
+            } catch (\Throwable $exception) {
+                Log::warning('No se pudo despachar alerta en canales legacy.', [
+                    'site_id' => $site->id,
+                    'alert_id' => $alert->id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -137,11 +153,20 @@ final class PersistSiteIncidentListener
             severity: (string) $alert->severity,
             detectedAtIso: $detectedAt->toIso8601String(),
             alertId: (int) $alert->id,
-            message: (string) ($alert->message ?? 'Sin detalle adicional.'),
+            incidentMessage: (string) ($alert->message ?? 'Sin detalle adicional.'),
         );
 
-        $admins->each(static function (User $admin) use ($notification): void {
-            $admin->notify($notification);
+        $admins->each(static function (User $admin) use ($notification, $site, $alert): void {
+            try {
+                $admin->notify($notification);
+            } catch (\Throwable $exception) {
+                Log::warning('No se pudo notificar a administrador de incidente critico.', [
+                    'site_id' => $site->id,
+                    'alert_id' => $alert->id,
+                    'admin_id' => $admin->id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
         });
     }
 }

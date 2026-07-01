@@ -28,7 +28,7 @@
             <div style="margin:16px 0;padding:14px;border-radius:8px;background:#fff7ed;border:1px solid #fdba74;">
                 <p style="margin:0;font-size:14px;line-height:1.6;">
                     <strong>Detalle tecnico:</strong><br>
-                    {{ $message }}
+                    {{ $incidentMessage }}
                 </p>
             </div>
 

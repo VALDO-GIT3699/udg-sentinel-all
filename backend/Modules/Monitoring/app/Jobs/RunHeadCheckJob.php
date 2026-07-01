@@ -150,18 +150,115 @@ final class RunHeadCheckJob implements ShouldQueue
             return $headResponse;
         }
 
-        if (! in_array($headStatus, [400, 401, 403, 405, 429, 500, 502, 503, 504], true)) {
-            return $headResponse;
+        $response = $headResponse;
+
+        if (in_array($headStatus, [400, 401, 403, 405, 429, 500, 502, 503, 504], true)) {
+            $response = $httpClientFactory
+                ->make([
+                    'Accept' => 'text/html,*/*;q=0.8',
+                    'Range' => 'bytes=0-0',
+                ])
+                ->get($site->url);
+
+            if ($response->status() >= 200 && $response->status() < 400) {
+                return $response;
+            }
         }
 
-        $fallbackResponse = $httpClientFactory
-            ->make([
-                'Accept' => 'text/html,*/*;q=0.8',
-                'Range' => 'bytes=0-0',
-            ])
-            ->get($site->url);
+        return $this->resolveAlternateHostResponse($site, $response, $httpClientFactory);
+    }
 
-        return $fallbackResponse;
+    private function resolveAlternateHostResponse(Site $site, Response $currentResponse, MonitoringHttpClientFactory $httpClientFactory): Response
+    {
+        if ($currentResponse->status() >= 200 && $currentResponse->status() < 400) {
+            return $currentResponse;
+        }
+
+        $siteUrl = (string) $site->url;
+        $parts = parse_url($siteUrl);
+
+        if (! is_array($parts) || ! isset($parts['host'])) {
+            return $currentResponse;
+        }
+
+        $host = mb_strtolower((string) $parts['host']);
+
+        if ($host !== 'udg.mx' && ! str_ends_with($host, '.udg.mx')) {
+            return $currentResponse;
+        }
+
+        $alternateHost = str_starts_with($host, 'www.')
+            ? mb_substr($host, 4)
+            : 'www.' . $host;
+
+        if ($alternateHost === '' || $alternateHost === $host) {
+            return $currentResponse;
+        }
+
+        $alternateUrl = $this->replaceHostInUrl($siteUrl, $alternateHost);
+
+        if ($alternateUrl === null) {
+            return $currentResponse;
+        }
+
+        try {
+            $alternateResponse = $httpClientFactory
+                ->make(['Accept' => 'text/html,*/*;q=0.8'])
+                ->head($alternateUrl);
+
+            if ($alternateResponse->status() >= 200 && $alternateResponse->status() < 400) {
+                return $alternateResponse;
+            }
+
+            if (in_array($alternateResponse->status(), [400, 401, 403, 405, 429, 500, 502, 503, 504], true)) {
+                $alternateGet = $httpClientFactory
+                    ->make([
+                        'Accept' => 'text/html,*/*;q=0.8',
+                        'Range' => 'bytes=0-0',
+                    ])
+                    ->get($alternateUrl);
+
+                if ($alternateGet->status() >= 200 && $alternateGet->status() < 400) {
+                    return $alternateGet;
+                }
+
+                return $alternateGet;
+            }
+
+            return $alternateResponse;
+        } catch (\Throwable) {
+            return $currentResponse;
+        }
+    }
+
+    private function replaceHostInUrl(string $url, string $newHost): ?string
+    {
+        $parts = parse_url($url);
+
+        if (! is_array($parts) || ! isset($parts['scheme'])) {
+            return null;
+        }
+
+        $scheme = (string) $parts['scheme'];
+        $user = isset($parts['user']) ? (string) $parts['user'] : null;
+        $pass = isset($parts['pass']) ? (string) $parts['pass'] : null;
+        $port = isset($parts['port']) ? (int) $parts['port'] : null;
+        $path = isset($parts['path']) ? (string) $parts['path'] : '';
+        $query = isset($parts['query']) ? '?' . (string) $parts['query'] : '';
+        $fragment = isset($parts['fragment']) ? '#' . (string) $parts['fragment'] : '';
+
+        $credentials = '';
+        if ($user !== null && $user !== '') {
+            $credentials = $user;
+            if ($pass !== null && $pass !== '') {
+                $credentials .= ':' . $pass;
+            }
+            $credentials .= '@';
+        }
+
+        $portSuffix = $port !== null ? ':' . $port : '';
+
+        return sprintf('%s://%s%s%s%s%s', $scheme, $credentials, $newHost, $portSuffix, $path, $query . $fragment);
     }
 
     private function upsertSecondBucketCheck(

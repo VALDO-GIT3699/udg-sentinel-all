@@ -6,7 +6,7 @@ namespace Modules\Monitoring\Events\Concerns;
 
 trait SkipsBroadcastWhenUnavailable
 {
-    public function shouldBroadcast(): bool
+    public function broadcastWhen(): bool
     {
         if (app()->environment('local')) {
             return false;
@@ -19,5 +19,10 @@ trait SkipsBroadcastWhenUnavailable
         }
 
         return class_exists('Pusher\\Pusher');
+    }
+
+    public function shouldBroadcast(): bool
+    {
+        return $this->broadcastWhen();
     }
 }
