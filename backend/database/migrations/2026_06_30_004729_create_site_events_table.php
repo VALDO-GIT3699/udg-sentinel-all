@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('title', 500);
             $table->text('description')->nullable();
             $table->string('severity', 20)->default('info')->comment('info/warning/error/critical');
-            $table->jsonb('metadata')->default('{}');
+            $table->json('metadata')->default('{}');
             $table->timestampTz('occurred_at');
             $table->foreignId('created_by')->nullable()
                   ->constrained('users')
@@ -39,3 +39,4 @@ return new class extends Migration
         Schema::dropIfExists('site_events');
     }
 };
+

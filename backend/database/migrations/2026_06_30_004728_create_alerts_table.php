@@ -32,7 +32,7 @@ return new class extends Migration
             $table->foreignId('resolved_by')->nullable()
                   ->constrained('users')
                   ->nullOnDelete();
-            $table->jsonb('context')->default('{}');
+            $table->json('context')->default('{}');
             $table->timestamps();
 
             $table->index(['site_id', 'status', 'triggered_at']);
@@ -48,3 +48,4 @@ return new class extends Migration
         Schema::dropIfExists('alerts');
     }
 };
+

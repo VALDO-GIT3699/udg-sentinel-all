@@ -29,7 +29,7 @@ return new class extends Migration
             $table->timestampTz('last_checked_at')->nullable();
             $table->unsignedSmallInteger('check_interval_min')->default(5);
             $table->text('notes')->nullable();
-            $table->jsonb('tags')->default('[]');
+            $table->json('tags')->default('[]');
             $table->timestamps();
             $table->softDeletes();
 
@@ -47,3 +47,4 @@ return new class extends Migration
         Schema::dropIfExists('sites');
     }
 };
+

@@ -6,7 +6,7 @@ import { readFileSync } from 'fs'
 import { fileURLToPath, URL } from 'node:url'
 
 // Carga automáticamente los entry points de todos los módulos
-let moduleEntries: string[] = []
+let moduleEntries = []
 try {
     const loader = JSON.parse(readFileSync('./vite-module-loader.js', 'utf-8').replace(/^[^{]+/, ''))
     if (loader?.input) {

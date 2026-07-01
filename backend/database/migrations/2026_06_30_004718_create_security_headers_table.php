@@ -22,7 +22,7 @@ return new class extends Migration
             $table->boolean('has_referrer_policy')->default(false);
             $table->boolean('has_permissions_policy')->default(false);
             $table->smallInteger('score_contribution')->default(0);
-            $table->jsonb('raw_headers')->default('{}');
+            $table->json('raw_headers')->default('{}');
             $table->timestamps();
 
             $table->index(['site_id']);
@@ -37,3 +37,4 @@ return new class extends Migration
         Schema::dropIfExists('security_headers');
     }
 };
+

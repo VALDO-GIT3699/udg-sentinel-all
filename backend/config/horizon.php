@@ -98,6 +98,11 @@ return [
 
     'waits' => [
         'redis:default' => 60,
+        'redis:monitoring-uptime' => 30,
+        'redis:monitoring-ssl' => 60,
+        'redis:monitoring-tech' => 90,
+        'redis:monitoring-headers' => 60,
+        'redis:monitoring-alerts' => 30,
     ],
 
     /*
@@ -210,6 +215,71 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+        'supervisor-monitoring-uptime' => [
+            'connection' => 'redis',
+            'queue' => ['monitoring-uptime'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 6,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 40,
+            'nice' => 0,
+        ],
+        'supervisor-monitoring-ssl' => [
+            'connection' => 'redis',
+            'queue' => ['monitoring-ssl'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 3,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 192,
+            'tries' => 2,
+            'timeout' => 120,
+            'nice' => 0,
+        ],
+        'supervisor-monitoring-tech' => [
+            'connection' => 'redis',
+            'queue' => ['monitoring-tech'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 2,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 256,
+            'tries' => 2,
+            'timeout' => 180,
+            'nice' => 0,
+        ],
+        'supervisor-monitoring-headers' => [
+            'connection' => 'redis',
+            'queue' => ['monitoring-headers'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 3,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 192,
+            'tries' => 2,
+            'timeout' => 120,
+            'nice' => 0,
+        ],
+        'supervisor-monitoring-alerts' => [
+            'connection' => 'redis',
+            'queue' => ['monitoring-alerts'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 2,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 60,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -219,11 +289,51 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+            'supervisor-monitoring-uptime' => [
+                'maxProcesses' => 12,
+                'balanceMaxShift' => 2,
+                'balanceCooldown' => 2,
+            ],
+            'supervisor-monitoring-ssl' => [
+                'maxProcesses' => 4,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
+            'supervisor-monitoring-tech' => [
+                'maxProcesses' => 4,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
+            'supervisor-monitoring-headers' => [
+                'maxProcesses' => 4,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
+            'supervisor-monitoring-alerts' => [
+                'maxProcesses' => 3,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 2,
+            ],
         ],
 
         'local' => [
             'supervisor-1' => [
                 'maxProcesses' => 3,
+            ],
+            'supervisor-monitoring-uptime' => [
+                'maxProcesses' => 4,
+            ],
+            'supervisor-monitoring-ssl' => [
+                'maxProcesses' => 2,
+            ],
+            'supervisor-monitoring-tech' => [
+                'maxProcesses' => 1,
+            ],
+            'supervisor-monitoring-headers' => [
+                'maxProcesses' => 2,
+            ],
+            'supervisor-monitoring-alerts' => [
+                'maxProcesses' => 1,
             ],
         ],
     ],

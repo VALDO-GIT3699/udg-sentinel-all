@@ -22,4 +22,6 @@ interface SiteGroupRepositoryInterface
     public function delete(SiteGroup $group): bool;
 
     public function withSiteCount(): Collection;
+
+    public function withMonitoredSiteCount(): Collection;
 }

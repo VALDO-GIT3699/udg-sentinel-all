@@ -6,7 +6,9 @@ namespace App\Repositories;
 
 use App\Contracts\Repositories\SiteRepositoryInterface;
 use App\Models\Site;
+use App\Models\SiteGroup;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 final class EloquentSiteRepository implements SiteRepositoryInterface
@@ -23,36 +25,15 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
 
     public function paginate(int $perPage, array $filters = []): LengthAwarePaginator
     {
-        $query = Site::with(['siteGroup', 'latestCheck', 'latestSecurityScore']);
+        $perPage = max(1, min(500, $perPage));
 
-        if (isset($filters['status']) && $filters['status'] !== 'all') {
-            $query->where('current_status', $filters['status']);
-        }
-
-        if (isset($filters['group_id'])) {
-            $query->where('site_group_id', (int) $filters['group_id']);
-        }
-
-        if (isset($filters['search']) && $filters['search'] !== '') {
-            $search = '%' . $filters['search'] . '%';
-            $query->where(function ($q) use ($search): void {
-                $q->where('name', 'ilike', $search)
-                  ->orWhere('domain', 'ilike', $search);
-            });
-        }
-
-        if (isset($filters['priority'])) {
-            $query->where('priority', (int) $filters['priority']);
-        }
-
-        return $query->orderByRaw("
-            CASE current_status
-                WHEN 'down' THEN 1
-                WHEN 'degraded' THEN 2
-                WHEN 'up' THEN 3
-                ELSE 4
-            END
-        ")->orderBy('priority')->paginate($perPage);
+        return $this->dashboardInventoryQuery($filters)
+            ->with(['siteGroup', 'latestCheck'])
+            ->orderByRaw('LOWER(sites.name)')
+            ->orderBy('sites.name')
+            ->orderBy('sites.id')
+            ->paginate($perPage)
+            ->withQueryString();
     }
 
     public function findById(int $id): ?Site
@@ -62,6 +43,7 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
             'latestCheck',
             'sslCertificate',
             'cmsDetail.drupalModules',
+            'siteTechnologies.technology',
             'latestSecurityScore',
             'latestSecurityHeader',
             'vulnerabilities' => fn ($q) => $q->active()->orderByDesc('detected_at'),
@@ -93,11 +75,22 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
         return (bool) $site->delete();
     }
 
-    public function countByStatus(): array
+    public function countByStatus(?int $groupId = null): array
     {
-        $counts = Site::active()
-            ->selectRaw('current_status, COUNT(*) as total')
-            ->groupBy('current_status')
+        $filters = [];
+
+        if ($groupId !== null) {
+            $filters['group_id'] = $groupId;
+        }
+
+        $query = $this->dashboardInventoryQuery($filters);
+
+        $query->getQuery()->orders = [];
+
+        $counts = $query
+            ->select('sites.current_status as current_status')
+            ->selectRaw('COUNT(*) as total')
+            ->groupBy('sites.current_status')
             ->pluck('total', 'current_status')
             ->toArray();
 
@@ -107,6 +100,23 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
             'degraded' => 0,
             'unknown'  => 0,
         ], $counts);
+    }
+
+    public function statusByGroup(): Collection
+    {
+        return SiteGroup::query()
+            ->selectRaw(
+                "site_groups.id, site_groups.name, site_groups.slug,
+                COUNT(*) FILTER (WHERE sites.is_active = true AND sites.is_monitored = true) as monitored_sites_count,
+                COUNT(*) FILTER (WHERE sites.is_active = true AND sites.is_monitored = true AND sites.current_status = 'up') as up_count,
+                COUNT(*) FILTER (WHERE sites.is_active = true AND sites.is_monitored = true AND sites.current_status = 'degraded') as degraded_count,
+                COUNT(*) FILTER (WHERE sites.is_active = true AND sites.is_monitored = true AND sites.current_status = 'down') as down_count,
+                COUNT(*) FILTER (WHERE sites.is_active = true AND sites.is_monitored = true AND sites.current_status = 'unknown') as unknown_count"
+            )
+            ->leftJoin('sites', 'sites.site_group_id', '=', 'site_groups.id')
+            ->groupBy('site_groups.id', 'site_groups.name', 'site_groups.slug')
+            ->orderBy('site_groups.name')
+            ->get();
     }
 
     public function getDown(): Collection
@@ -133,5 +143,186 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
             ->orderBy('priority')
             ->limit($limit)
             ->get();
+    }
+
+    public function monitoredByGroup(int $groupId): Collection
+    {
+        return Site::active()->monitored()
+            ->where('site_group_id', $groupId)
+            ->with(['siteGroup', 'latestCheck'])
+            ->orderBy('priority')
+            ->orderBy('name')
+            ->get();
+    }
+
+    public function monitoredByPriority(int $priority): Collection
+    {
+        return Site::active()->monitored()
+            ->where('priority', $priority)
+            ->with(['siteGroup', 'latestCheck'])
+            ->orderBy('name')
+            ->get();
+    }
+
+    public function dueForCheck(int $limit = 100): Collection
+    {
+        $driver = Site::query()->getConnection()->getDriverName();
+
+        return Site::active()->monitored()
+            ->where(function ($query) use ($driver): void {
+                $query->whereNull('last_checked_at');
+
+                if ($driver === 'sqlite') {
+                    $query->orWhereRaw("last_checked_at <= datetime('now', '-' || check_interval_min || ' minutes')");
+                    return;
+                }
+
+                if ($driver === 'pgsql') {
+                    $query->orWhereRaw('EXTRACT(EPOCH FROM (NOW() - last_checked_at)) / 60 >= check_interval_min');
+                    return;
+                }
+
+                $query->orWhereRaw('TIMESTAMPDIFF(MINUTE, last_checked_at, NOW()) >= check_interval_min');
+            })
+            ->with('siteGroup')
+            ->orderBy('priority')
+            ->orderBy('last_checked_at')
+            ->limit($limit)
+            ->get();
+    }
+
+    public function dueForSslScan(int $limit = 100): Collection
+    {
+        $hours = max(1, (int) env('SENTINEL_SSL_SCAN_INTERVAL', 24));
+
+        return Site::active()->monitored()
+            ->where(function ($query) use ($hours): void {
+                $query->whereDoesntHave('sslCertificates')
+                    ->orWhereHas('sslCertificates', function ($certificateQuery) use ($hours): void {
+                        $certificateQuery
+                            ->whereNotNull('last_checked_at')
+                            ->where('last_checked_at', '<=', now()->subHours($hours));
+                    });
+            })
+            ->with('siteGroup')
+            ->orderBy('priority')
+            ->orderBy('last_checked_at')
+            ->limit($limit)
+            ->get();
+    }
+
+    public function dueForSecurityHeaderScan(int $limit = 100): Collection
+    {
+        $hours = max(1, (int) env('SENTINEL_SECURITY_SCAN_INTERVAL', 12));
+
+        return Site::active()->monitored()
+            ->where(function ($query) use ($hours): void {
+                $query->whereDoesntHave('securityHeaders')
+                    ->orWhereHas('securityHeaders', function ($headerQuery) use ($hours): void {
+                        $headerQuery
+                            ->whereNotNull('checked_at')
+                            ->where('checked_at', '<=', now()->subHours($hours));
+                    });
+            })
+            ->with('siteGroup')
+            ->orderBy('priority')
+            ->orderBy('last_checked_at')
+            ->limit($limit)
+            ->get();
+    }
+
+    public function dueForTechnologyScan(int $limit = 100): Collection
+    {
+        $hours = max(1, (int) env('SENTINEL_TECH_SCAN_INTERVAL', 24));
+
+        return Site::active()->monitored()
+            ->where(function ($query) use ($hours): void {
+                $query->whereDoesntHave('siteTechnologies')
+                    ->orWhereHas('siteTechnologies', function ($technologyQuery) use ($hours): void {
+                        $technologyQuery
+                            ->whereNotNull('detected_at')
+                            ->where('detected_at', '<=', now()->subHours($hours));
+                    });
+            })
+            ->with('siteGroup')
+            ->orderBy('priority')
+            ->orderBy('last_checked_at')
+            ->limit($limit)
+            ->get();
+    }
+
+    private function dashboardInventoryQuery(array $filters = []): Builder
+    {
+        $baseQuery = Site::query()->select('sites.*');
+
+        $this->applyDashboardFilters($baseQuery, $filters);
+
+        $rankedQuery = (clone $baseQuery)
+            ->selectRaw($this->dashboardCanonicalDomainSql() . ' as dashboard_canonical_domain')
+            ->selectRaw(
+                'ROW_NUMBER() OVER ('
+                . 'PARTITION BY sites.site_group_id, ' . $this->dashboardCanonicalDomainSql() . ' '
+                . 'ORDER BY '
+                . "CASE sites.current_status WHEN 'down' THEN 1 WHEN 'degraded' THEN 2 WHEN 'up' THEN 3 ELSE 4 END, "
+                . 'sites.priority ASC, '
+                . 'CASE WHEN sites.last_checked_at IS NULL THEN 1 ELSE 0 END ASC, '
+                . 'sites.last_checked_at DESC, '
+                . 'sites.id ASC'
+                . ') as dashboard_duplicate_rank'
+            );
+
+        return Site::query()
+            ->select('sites.*')
+            ->joinSub($rankedQuery, 'dashboard_ranked_sites', static function ($join): void {
+                $join->on('dashboard_ranked_sites.id', '=', 'sites.id');
+            })
+            ->where('dashboard_ranked_sites.dashboard_duplicate_rank', 1)
+            ->orderBy('sites.name')
+            ->orderBy('sites.id');
+    }
+
+    private function applyDashboardFilters(Builder $query, array $filters): void
+    {
+        $query->where('sites.is_active', true)
+            ->where('sites.is_monitored', true);
+
+        if (isset($filters['status']) && $filters['status'] !== 'all') {
+            $query->where('sites.current_status', $filters['status']);
+        }
+
+        if (isset($filters['group_id'])) {
+            $query->where('sites.site_group_id', (int) $filters['group_id']);
+        }
+
+        if (isset($filters['search']) && trim((string) $filters['search']) !== '') {
+            $search = '%' . trim((string) $filters['search']) . '%';
+            $query->where(function (Builder $nestedQuery) use ($search): void {
+                $nestedQuery->where('sites.name', 'like', $search)
+                    ->orWhere('sites.domain', 'like', $search);
+            });
+        }
+
+        if (isset($filters['priority'])) {
+            $query->where('sites.priority', (int) $filters['priority']);
+        }
+    }
+
+    private function dashboardCanonicalDomainSql(): string
+    {
+        $driver = Site::query()->getConnection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            return "REGEXP_REPLACE(LOWER(sites.domain), '^(?:(?:www\\d*|portal\\d*|web\\d*|home)\\.)+', '')";
+        }
+
+        return $this->stripMirrorPrefixesSql('LOWER(sites.domain)');
+    }
+
+    private function stripMirrorPrefixesSql(string $expression): string
+    {
+        return sprintf(
+            "REPLACE(REPLACE(REPLACE(REPLACE(%s, 'www.', ''), 'portal.', ''), 'web.', ''), 'home.', '')",
+            $expression,
+        );
     }
 }

@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('scope', 20);
             $table->unsignedBigInteger('scope_id')->nullable();
             $table->string('frequency', 20)->comment('daily/weekly/monthly');
-            $table->jsonb('delivery_channels')->default('[]');
+            $table->json('delivery_channels')->default('[]');
             $table->boolean('is_active')->default(true);
             $table->timestampTz('last_run_at')->nullable();
             $table->timestampTz('next_run_at')->nullable();
@@ -34,3 +34,4 @@ return new class extends Migration
         Schema::dropIfExists('report_schedules');
     }
 };
+

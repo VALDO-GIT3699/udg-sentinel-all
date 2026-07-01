@@ -28,7 +28,12 @@ interface SiteRepositoryInterface
 
     public function delete(Site $site): bool;
 
-    public function countByStatus(): array;
+    public function countByStatus(?int $groupId = null): array;
+
+    /**
+     * @return Collection<int, mixed>
+     */
+    public function statusByGroup(): Collection;
 
     public function getDown(): Collection;
 
@@ -37,4 +42,16 @@ interface SiteRepositoryInterface
     public function getByGroup(int $groupId): Collection;
 
     public function withLatestChecks(int $limit = 10): Collection;
+
+    public function monitoredByGroup(int $groupId): Collection;
+
+    public function monitoredByPriority(int $priority): Collection;
+
+    public function dueForCheck(int $limit = 100): Collection;
+
+    public function dueForSslScan(int $limit = 100): Collection;
+
+    public function dueForSecurityHeaderScan(int $limit = 100): Collection;
+
+    public function dueForTechnologyScan(int $limit = 100): Collection;
 }

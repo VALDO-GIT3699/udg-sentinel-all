@@ -23,7 +23,7 @@ return new class extends Migration
             $table->unsignedSmallInteger('high_count')->default(0);
             $table->unsignedSmallInteger('medium_count')->default(0);
             $table->unsignedSmallInteger('low_count')->default(0);
-            $table->jsonb('raw_output')->default('{}');
+            $table->json('raw_output')->default('{}');
             $table->timestamps();
 
             $table->index(['site_id', 'scan_type', 'started_at']);
@@ -38,3 +38,4 @@ return new class extends Migration
         Schema::dropIfExists('scan_results');
     }
 };
+

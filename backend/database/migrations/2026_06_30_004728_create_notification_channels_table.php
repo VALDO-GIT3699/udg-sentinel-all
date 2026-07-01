@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('type', 50)->comment('email/slack/teams/telegram/webhook');
-            $table->jsonb('config')->comment('Configuración cifrada del canal');
+            $table->json('config')->comment('Configuración cifrada del canal');
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
@@ -29,3 +29,4 @@ return new class extends Migration
         Schema::dropIfExists('notification_channels');
     }
 };
+

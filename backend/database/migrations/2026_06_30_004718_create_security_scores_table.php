@@ -17,8 +17,8 @@ return new class extends Migration
             $table->unsignedSmallInteger('score');
             $table->string('level', 20)->comment('critical/low/medium/good/excellent');
             $table->timestampTz('calculated_at');
-            $table->jsonb('breakdown')->default('{}');
-            $table->jsonb('recommendations')->default('[]');
+            $table->json('breakdown')->default('{}');
+            $table->json('recommendations')->default('[]');
             $table->timestampTz('created_at')->nullable();
 
             $table->index(['site_id', 'calculated_at']);
@@ -33,3 +33,4 @@ return new class extends Migration
         Schema::dropIfExists('security_scores');
     }
 };
+

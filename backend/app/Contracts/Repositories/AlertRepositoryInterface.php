@@ -24,6 +24,8 @@ interface AlertRepositoryInterface
 
     public function recentOpen(int $limit = 20): Collection;
 
+    public function recentOpenForGroup(int $groupId, int $limit = 20): Collection;
+
     public function acknowledge(Alert $alert, int $userId): bool;
 
     public function resolve(Alert $alert, int $userId): bool;

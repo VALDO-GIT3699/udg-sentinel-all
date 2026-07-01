@@ -9,7 +9,6 @@ use App\Contracts\Repositories\SiteCheckRepositoryInterface;
 use App\Contracts\Repositories\SiteRepositoryInterface;
 use App\Models\Site;
 use App\Models\SiteEvent;
-use App\Services\AlertNotificationService;
 use DateTimeInterface;
 use Modules\Monitoring\Events\SiteDownDetected;
 use Modules\Monitoring\Events\SiteRecovered;
@@ -21,7 +20,6 @@ final class EvaluateSiteStatusService
         private readonly SiteCheckRepositoryInterface $siteCheckRepository,
         private readonly SiteRepositoryInterface $siteRepository,
         private readonly AlertRepositoryInterface $alertRepository,
-        private readonly AlertNotificationService $alertNotificationService,
     ) {
     }
 
@@ -58,12 +56,12 @@ final class EvaluateSiteStatusService
 
         $openAlerts = $this->alertRepository->openForSite($lockedSite->id);
 
+        $occurredAt = $checkedAt ?? now();
+
         $eventType = $nextStatus === 'down'
             ? 'site.down.detected'
             : ($nextStatus === 'up' && $openAlerts->isNotEmpty() ? 'site.recovered' : 'site.status.changed');
-        $severity = $nextStatus === 'down'
-            ? (((int) $lockedSite->priority === 1) ? 'critical' : 'high')
-            : 'info';
+        $severity = $this->resolveSeverity($nextStatus, (int) $lockedSite->priority);
 
         SiteEvent::record(
             siteId: $lockedSite->id,
@@ -75,6 +73,7 @@ final class EvaluateSiteStatusService
                 'before' => $previousStatus,
                 'after' => $nextStatus,
             ],
+            occurredAt: $occurredAt,
         );
 
         SiteStatusChanged::dispatch(
@@ -88,7 +87,7 @@ final class EvaluateSiteStatusService
                 'statusAfter' => $this->statusLabel($nextStatus),
                 'statusBeforeCode' => $previousStatus,
                 'statusAfterCode' => $nextStatus,
-                'detectedAt' => now()->toIso8601String(),
+                'detectedAt' => $occurredAt->format(DATE_ATOM),
                 'cause' => $errorMessage,
             ]
         );
@@ -106,43 +105,19 @@ final class EvaluateSiteStatusService
         }
 
         if ($nextStatus === 'down') {
-            if ($openAlerts->isEmpty()) {
-                $severity = ((int) $lockedSite->priority === 1) ? 'critical' : 'high';
-
-                $alert = $this->alertRepository->create([
-                    'site_id' => $lockedSite->id,
-                    'title' => 'Sitio oficial caido',
-                    'message' => $errorMessage ?? 'Fallas consecutivas de disponibilidad detectadas.',
-                    'severity' => $severity,
-                    'status' => 'open',
-                    'triggered_at' => now(),
-                    'context' => [
-                        'event' => 'site.down.detected',
-                        'site_status_before' => $previousStatus,
-                        'site_status_after' => $nextStatus,
-                    ],
-                ]);
-
-                $this->alertNotificationService->dispatch($alert, [
-                    'trigger' => 'site_down',
-                    'site_status_before' => $previousStatus,
-                    'site_status_after' => $nextStatus,
-                ]);
-
-                SiteDownDetected::dispatch(
-                    siteId: (int) $lockedSite->id,
-                    siteName: $lockedSite->name,
-                    url: $lockedSite->url,
-                    severity: $severity,
-                    cause: $errorMessage,
-                    detectedAt: now()->toIso8601String(),
-                );
-            }
+            SiteDownDetected::dispatch(
+                siteId: (int) $lockedSite->id,
+                siteName: $lockedSite->name,
+                url: $lockedSite->url,
+                severity: $this->resolveSeverity('down', (int) $lockedSite->priority),
+                cause: $errorMessage,
+                detectedAt: $occurredAt->format(DATE_ATOM),
+            );
         } elseif ($eventType === 'site.recovered') {
             foreach ($openAlerts as $openAlert) {
                 $openAlert->update([
                     'status' => 'resolved',
-                    'resolved_at' => now(),
+                    'resolved_at' => $occurredAt,
                     'resolved_by' => null,
                 ]);
             }
@@ -156,6 +131,7 @@ final class EvaluateSiteStatusService
                 metadata: [
                     'resolved_alerts' => $openAlerts->count(),
                 ],
+                occurredAt: $occurredAt,
             );
 
             if (function_exists('activity')) {
@@ -172,7 +148,7 @@ final class EvaluateSiteStatusService
                 siteId: (int) $lockedSite->id,
                 siteName: $lockedSite->name,
                 url: $lockedSite->url,
-                recoveredAt: now()->toIso8601String(),
+                recoveredAt: $occurredAt->format(DATE_ATOM),
             );
         }
 
@@ -186,6 +162,15 @@ final class EvaluateSiteStatusService
             'degraded' => 'DEGRADADO',
             'down' => 'CAÍDO',
             default => 'DESCONOCIDO',
+        };
+    }
+
+    private function resolveSeverity(string $statusCode, int $sitePriority): string
+    {
+        return match ($statusCode) {
+            'down' => $sitePriority === 1 ? 'critical' : 'high',
+            'degraded' => $sitePriority === 1 ? 'high' : 'medium',
+            default => 'info',
         };
     }
 }

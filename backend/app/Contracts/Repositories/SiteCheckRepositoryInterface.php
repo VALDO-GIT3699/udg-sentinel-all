@@ -31,4 +31,17 @@ interface SiteCheckRepositoryInterface
      * @return Collection<int, SiteCheck>
      */
     public function timelineForSite(int $siteId, int $hours = 24, int $limit = 288): Collection;
+
+    /**
+     * Recent checks across monitored sites for dashboard timeline widgets.
+     * @return Collection<int, SiteCheck>
+     */
+    public function recentTimeline(int $hours = 1, int $limit = 60): Collection;
+
+    /**
+     * @return array{total_checks:int,down_checks:int,avg_latency_ms:float|null}
+     */
+    public function summarizeWindow(int $hours = 1): array;
+
+    public function consecutiveStatusCount(int $siteId, string $status, int $limit = 5): int;
 }

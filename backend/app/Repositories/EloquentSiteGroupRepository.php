@@ -44,4 +44,12 @@ final class EloquentSiteGroupRepository implements SiteGroupRepositoryInterface
     {
         return SiteGroup::withCount('sites')->ordered()->get();
     }
+
+    public function withMonitoredSiteCount(): Collection
+    {
+        return SiteGroup::withCount([
+            'sites',
+            'sites as monitored_sites_count' => fn ($query) => $query->where('is_monitored', true)->where('is_active', true),
+        ])->ordered()->get();
+    }
 }

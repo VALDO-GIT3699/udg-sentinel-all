@@ -66,6 +66,18 @@ final class EloquentAlertRepository implements AlertRepositoryInterface
             ->get();
     }
 
+    public function recentOpenForGroup(int $groupId, int $limit = 20): Collection
+    {
+        return Alert::with('site')->unresolved()
+            ->whereHas('site', static function ($query) use ($groupId): void {
+                $query->where('site_group_id', $groupId);
+            })
+            ->orderByRaw("CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END")
+            ->orderByDesc('triggered_at')
+            ->limit($limit)
+            ->get();
+    }
+
     public function acknowledge(Alert $alert, int $userId): bool
     {
         return $alert->acknowledge($userId);

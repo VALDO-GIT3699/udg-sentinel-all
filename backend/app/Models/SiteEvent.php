@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -87,6 +88,7 @@ final class SiteEvent extends Model
         ?string $description = null,
         array $metadata = [],
         ?int $createdBy = null,
+        ?DateTimeInterface $occurredAt = null,
     ): self {
         return self::create([
             'site_id'     => $siteId,
@@ -95,7 +97,7 @@ final class SiteEvent extends Model
             'description' => $description,
             'severity'    => $severity,
             'metadata'    => $metadata,
-            'occurred_at' => now(),
+            'occurred_at' => $occurredAt ?? now(),
             'created_by'  => $createdBy,
         ]);
     }

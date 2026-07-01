@@ -6,11 +6,11 @@ namespace Tests\Feature\Monitoring;
 
 use App\Models\Alert;
 use App\Models\Site;
-use App\Models\SiteCheck;
 use App\Models\SiteGroup;
-use App\Models\TrafficMetric;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use PHPUnit\Framework\Attributes\Test;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
@@ -86,8 +86,16 @@ final class DashboardAlertsFeatureTest extends TestCase
 
         $response->assertOk();
         $response->assertHeader('X-Inertia', 'true');
-        $response->assertJsonPath('props.openAlerts.0.title', 'Caida del portal');
-        $response->assertJsonPath('props.openAlertsCount', 1);
+        $response->assertJsonPath('props.statusCounts.down', 1);
+        $response->assertJsonPath('props.sites.data.0.name', 'Portal oficial UDG');
+
+        $props = $response->json('props');
+
+        $this->assertIsArray($props);
+        $this->assertArrayNotHasKey('trafficOverview', $props);
+        $this->assertArrayNotHasKey('timeline', $props);
+        $this->assertArrayNotHasKey('siteTelemetry', $props);
+        $this->assertArrayNotHasKey('openAlerts', $props);
     }
 
     #[Test]
@@ -101,7 +109,7 @@ final class DashboardAlertsFeatureTest extends TestCase
     }
 
     #[Test]
-    public function dashboard_exposes_group_summary_and_recent_timeline(): void
+    public function dashboard_uses_strict_zero_fallbacks_for_metrics_without_samples(): void
     {
         $user = User::factory()->create();
 
@@ -135,105 +143,35 @@ final class DashboardAlertsFeatureTest extends TestCase
             'tags' => [],
         ]);
 
-        SiteCheck::query()->create([
-            'site_id' => $site->id,
-            'checked_at' => now()->subMinutes(5),
-            'status' => 'down',
-            'http_code' => 503,
-            'response_time_ms' => 930,
-            'response_size_bytes' => 512,
-            'ip_resolved' => null,
-            'redirect_url' => null,
-            'error_message' => 'service unavailable',
-            'checked_from' => 'test',
-            'created_at' => now()->subMinutes(5),
-        ]);
-
         $response = $this->actingAs($user)->get(route('monitoring.dashboard'), [
             'X-Inertia' => 'true',
             'X-Requested-With' => 'XMLHttpRequest',
         ]);
 
         $response->assertOk();
-        $response->assertJsonPath('props.timeline.0.status', 'CAÍDO');
-        $response->assertJsonPath('props.timeline.0.site.name', 'Plataforma escolar');
-        $response->assertJsonPath('props.statusByGroup.0.name', 'Servicios academicos');
+        $response->assertJsonPath('props.pipelineMetrics.totalChecks', 0);
+        $response->assertJsonPath('props.pipelineMetrics.downChecks', 0);
+        $response->assertJsonPath('props.pipelineMetrics.errorRatePct', 0);
+        $response->assertJsonPath('props.pipelineMetrics.avgLatencyMs', 0);
+        $response->assertJsonPath('props.sites.data.0.name', 'Plataforma escolar');
     }
 
     #[Test]
-    public function dashboard_exposes_heatmap_and_realtime_timelines_for_traffic(): void
+    public function dashboard_triggers_telemetry_warmup_once_in_local_environments(): void
     {
+        $this->app['env'] = 'local';
+
         $user = User::factory()->create();
 
         Permission::findOrCreate('monitoring.view_dashboard', 'web');
         $user->givePermissionTo('monitoring.view_dashboard');
 
-        $group = SiteGroup::query()->create([
-            'name' => 'Portales de alta demanda',
-            'slug' => 'portales-alta-demanda',
-            'description' => null,
-            'responsible_name' => null,
-            'responsible_email' => null,
-            'color' => '#F97316',
-        ]);
+        Cache::shouldReceive('add')
+            ->once()
+            ->with('monitoring:dashboard:warmup', \Mockery::type('int'), 60)
+            ->andReturnTrue();
 
-        $slowSite = Site::query()->create([
-            'site_group_id' => $group->id,
-            'name' => 'Biblioteca digital',
-            'slug' => 'biblioteca-digital',
-            'domain' => 'biblioteca.udg.mx',
-            'url' => 'https://biblioteca.udg.mx',
-            'is_active' => true,
-            'is_monitored' => true,
-            'priority' => 1,
-            'current_status' => 'degraded',
-            'current_score' => 77,
-            'current_score_level' => 'medium',
-            'last_checked_at' => now(),
-            'check_interval_min' => 5,
-            'notes' => null,
-            'tags' => [],
-        ]);
-
-        $healthySite = Site::query()->create([
-            'site_group_id' => $group->id,
-            'name' => 'Portal noticias',
-            'slug' => 'portal-noticias-traffic',
-            'domain' => 'noticias.udg.mx',
-            'url' => 'https://noticias.udg.mx',
-            'is_active' => true,
-            'is_monitored' => true,
-            'priority' => 2,
-            'current_status' => 'up',
-            'current_score' => 93,
-            'current_score_level' => 'good',
-            'last_checked_at' => now(),
-            'check_interval_min' => 5,
-            'notes' => null,
-            'tags' => [],
-        ]);
-
-        foreach ([15, 10, 5] as $minutesAgo) {
-            TrafficMetric::query()->create([
-                'site_id' => $slowSite->id,
-                'recorded_at' => now()->subMinutes($minutesAgo),
-                'requests_per_min' => 180 - $minutesAgo,
-                'unique_visitors' => null,
-                'bandwidth_bytes' => null,
-                'error_rate_pct' => 12.5,
-                'avg_response_time_ms' => 920 - ($minutesAgo * 5),
-            ]);
-
-            TrafficMetric::query()->create([
-                'site_id' => $healthySite->id,
-                'recorded_at' => now()->subMinutes($minutesAgo),
-                'requests_per_min' => 55 - intdiv($minutesAgo, 5),
-                'unique_visitors' => null,
-                'bandwidth_bytes' => null,
-                'error_rate_pct' => 0.0,
-                'avg_response_time_ms' => 120 - $minutesAgo,
-            ]);
-        }
+        Artisan::shouldReceive('call')->times(4)->andReturn(0);
 
         $response = $this->actingAs($user)->get(route('monitoring.dashboard'), [
             'X-Inertia' => 'true',
@@ -241,11 +179,6 @@ final class DashboardAlertsFeatureTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJsonPath('props.refreshIntervalMs', 5000);
-        $response->assertJsonPath('props.trafficOverview.heatmap.0.name', 'Biblioteca digital');
-        $response->assertJsonPath('props.trafficOverview.heatmap.0.status', 'DEGRADADO');
-        $response->assertJsonPath('props.trafficOverview.timelines.0.name', 'Biblioteca digital');
-        $response->assertJsonPath('props.trafficOverview.timelines.0.points.0.latencyMs', 845);
     }
 
     #[Test]

@@ -27,7 +27,7 @@ return new class extends Migration
             $table->string('algorithm', 50)->nullable();
             $table->unsignedSmallInteger('key_size')->nullable();
             $table->string('signature_alg', 100)->nullable();
-            $table->jsonb('san_domains')->default('[]');
+            $table->json('san_domains')->default('[]');
             $table->string('fingerprint_sha256', 95)->nullable();
             $table->timestampTz('last_checked_at')->nullable();
             $table->timestamps();
@@ -45,3 +45,4 @@ return new class extends Migration
         Schema::dropIfExists('ssl_certificates');
     }
 };
+

@@ -23,7 +23,7 @@ return new class extends Migration
             $table->string('applies_to', 20)->default('all')->comment('all/group/site');
             $table->unsignedBigInteger('target_id')->nullable();
             $table->unsignedInteger('cooldown_minutes')->default(60);
-            $table->jsonb('channel_ids')->default('[]');
+            $table->json('channel_ids')->default('[]');
             $table->timestamps();
         });
     }
@@ -36,3 +36,4 @@ return new class extends Migration
         Schema::dropIfExists('alert_rules');
     }
 };
+

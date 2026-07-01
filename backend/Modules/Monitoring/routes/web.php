@@ -4,18 +4,17 @@ use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Modules\Monitoring\Http\Controllers\DashboardController;
+use Modules\Monitoring\Http\Controllers\SiteDetailController;
 use Modules\Monitoring\Http\Controllers\SiteController;
 use Modules\Monitoring\Http\Controllers\SiteGroupController;
+use Modules\Monitoring\Support\EnsureLocalMonitoringUser;
 
 Route::middleware(['web'])->group(function () {
     Route::get('monitoring/local-autologin', function () {
         abort_unless(app()->environment('local'), 404);
 
-        $user = User::query()->where('email', 'udgmonitoreo26B')->first();
-
-        if (! $user instanceof User) {
-            abort(500, 'No existe el usuario local udgmonitoreo26B. Ejecuta php artisan db:seed.');
-        }
+        /** @var User $user */
+        $user = app(EnsureLocalMonitoringUser::class)->handle();
 
         Auth::login($user, true);
         request()->session()->regenerate();
@@ -34,7 +33,7 @@ Route::middleware(['web'])->group(function () {
         ->middleware('permission:monitoring.view_dashboard')
         ->name('monitoring.groups.view');
 
-    Route::get('monitoring/sites/{site}/detail', [DashboardController::class, 'siteDetail'])
+    Route::get('monitoring/sites/{siteId}/detail', [SiteDetailController::class, 'show'])
         ->middleware('permission:monitoring.view_site_detail')
         ->name('monitoring.sites.detail');
 

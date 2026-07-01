@@ -20,7 +20,7 @@ return new class extends Migration
             $table->boolean('is_primary')->default(false);
             $table->timestampTz('detected_at');
             $table->string('detection_method', 50)->default('automatic');
-            $table->jsonb('metadata')->default('{}');
+            $table->json('metadata')->default('{}');
             $table->timestamps();
 
             $table->index(['site_id', 'technology_id']);
@@ -35,3 +35,4 @@ return new class extends Migration
         Schema::dropIfExists('site_technologies');
     }
 };
+

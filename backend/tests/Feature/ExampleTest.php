@@ -14,6 +14,7 @@ class ExampleTest extends TestCase
     {
         $response = $this->get('/');
 
-        $response->assertStatus(200);
+        // La raiz redirige a /monitoring, que a su vez requiere autenticacion (302).
+        $response->assertRedirect();
     }
 }
