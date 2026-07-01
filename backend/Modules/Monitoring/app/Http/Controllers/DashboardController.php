@@ -30,7 +30,7 @@ final class DashboardController extends Controller
 
     private const DASHBOARD_MAX_PER_PAGE = 500;
 
-    private const DASHBOARD_REFRESH_INTERVAL_MS = 15000;
+    private const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
 
     public function __construct(
         private readonly SiteRepositoryInterface $siteRepository,
@@ -59,6 +59,7 @@ final class DashboardController extends Controller
             'statusCounts' => $this->translateStatusCounts($this->siteRepository->countByStatus()),
             'statusByGroup' => $this->siteRepository->statusByGroup(),
             'pipelineMetrics' => $this->pipelineMetrics(),
+            'trafficOverview' => $this->buildTrafficOverview($filters),
             'groups' => $this->siteGroupRepository->withMonitoredSiteCount(),
             'sites' => $this->translateSiteStatuses($sites),
             'siteTelemetry' => $this->buildSiteTelemetry($sites),
@@ -349,6 +350,133 @@ final class DashboardController extends Controller
                 'openVulnerabilities' => (int) ($vulnerabilityBySite[$siteId] ?? 0),
             ];
         })->values()->all();
+    }
+
+    /**
+     * @param array<string, int|string|null> $filters
+     * @return array<string, mixed>
+     */
+    private function buildTrafficOverview(array $filters): array
+    {
+        $sites = Site::query()
+            ->select(['id', 'name', 'domain', 'current_status'])
+            ->where('is_active', true)
+            ->where('is_monitored', true)
+            ->when(($filters['group_id'] ?? null) !== null, static function ($query) use ($filters): void {
+                $query->where('site_group_id', (int) $filters['group_id']);
+            })
+            ->when(($filters['priority'] ?? null) !== null, static function ($query) use ($filters): void {
+                $query->where('priority', (int) $filters['priority']);
+            })
+            ->when(($filters['status'] ?? 'all') !== 'all', static function ($query) use ($filters): void {
+                $query->where('current_status', (string) $filters['status']);
+            })
+            ->when(($filters['search'] ?? '') !== '', static function ($query) use ($filters): void {
+                $term = '%' . trim((string) $filters['search']) . '%';
+
+                $query->where(static function ($nested) use ($term): void {
+                    $nested->where('name', 'like', $term)
+                        ->orWhere('domain', 'like', $term)
+                        ->orWhere('url', 'like', $term);
+                });
+            })
+            ->orderBy('name')
+            ->get();
+
+        if ($sites->isEmpty()) {
+            return [
+                'window' => '1h',
+                'heatmap' => [],
+                'timelines' => [],
+                'updatedAt' => now()->toIso8601String(),
+            ];
+        }
+
+        $trafficBySite = TrafficMetric::query()
+            ->whereIn('site_id', $sites->pluck('id')->all())
+            ->where('recorded_at', '>=', now()->subHour())
+            ->orderBy('recorded_at')
+            ->get(['site_id', 'recorded_at', 'avg_response_time_ms', 'requests_per_min', 'error_rate_pct'])
+            ->groupBy('site_id');
+
+        $heatmap = $sites->map(function (Site $site) use ($trafficBySite): array {
+            $samples = $trafficBySite->get($site->id, collect());
+            $current = $samples->last();
+            $avgLatency = $samples->isNotEmpty() ? round((float) $samples->avg('avg_response_time_ms'), 2) : null;
+            $peakLatency = $samples->isNotEmpty() ? (int) $samples->max('avg_response_time_ms') : null;
+            $avgRpm = $samples->isNotEmpty() ? round((float) $samples->avg('requests_per_min'), 2) : null;
+            $currentLatency = $current?->avg_response_time_ms;
+            $currentRpm = $current?->requests_per_min;
+            $errorRate = $samples->isNotEmpty() ? round((float) $samples->max('error_rate_pct'), 2) : 0.0;
+            $statusPenalty = match ((string) $site->current_status) {
+                'down' => 18,
+                'degraded' => 10,
+                default => 0,
+            };
+            $loadIndex = min(
+                100,
+                max(
+                    0,
+                    (int) round(
+                        min(55, (($currentLatency ?? $avgLatency ?? 0) / 18))
+                        + min(25, (($currentRpm ?? $avgRpm ?? 0) / 12))
+                        + min(20, ($errorRate / 5))
+                        + $statusPenalty
+                    )
+                )
+            );
+
+            return [
+                'siteId' => (int) $site->id,
+                'name' => (string) $site->name,
+                'domain' => (string) $site->domain,
+                'status' => $this->translateStatusCode((string) $site->current_status),
+                'statusCode' => (string) $site->current_status,
+                'currentLatencyMs' => $currentLatency,
+                'avgLatencyMs' => $avgLatency,
+                'peakLatencyMs' => $peakLatency,
+                'currentRpm' => $currentRpm,
+                'avgRpm' => $avgRpm,
+                'errorRatePct' => $errorRate,
+                'loadIndex' => $loadIndex,
+                'sampleCount' => $samples->count(),
+                'updatedAt' => optional($current?->recorded_at)->toIso8601String(),
+            ];
+        })->sortByDesc('loadIndex')->values();
+
+        $topSiteIds = $heatmap->take(8)->pluck('siteId')->all();
+
+        $timelines = $sites
+            ->filter(static fn (Site $site): bool => in_array((int) $site->id, $topSiteIds, true))
+            ->map(function (Site $site) use ($trafficBySite, $heatmap): array {
+                $samples = $trafficBySite->get($site->id, collect())->take(-12)->values();
+                $summary = $heatmap->firstWhere('siteId', (int) $site->id);
+
+                return [
+                    'siteId' => (int) $site->id,
+                    'name' => (string) $site->name,
+                    'status' => $this->translateStatusCode((string) $site->current_status),
+                    'statusCode' => (string) $site->current_status,
+                    'currentLatencyMs' => $summary['currentLatencyMs'] ?? null,
+                    'currentRpm' => $summary['currentRpm'] ?? null,
+                    'loadIndex' => $summary['loadIndex'] ?? 0,
+                    'points' => $samples->map(static fn ($sample) => [
+                        'at' => optional($sample->recorded_at)->toIso8601String(),
+                        'latencyMs' => $sample->avg_response_time_ms,
+                        'rpm' => $sample->requests_per_min,
+                    ])->values()->all(),
+                ];
+            })
+            ->sortByDesc('loadIndex')
+            ->values()
+            ->all();
+
+        return [
+            'window' => '1h',
+            'heatmap' => $heatmap->all(),
+            'timelines' => $timelines,
+            'updatedAt' => now()->toIso8601String(),
+        ];
     }
 
     private function humanSslRemaining(?int $daysRemaining): string

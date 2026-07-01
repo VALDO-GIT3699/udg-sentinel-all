@@ -82,6 +82,77 @@
         </div>
       </section>
 
+      <section class="mt-6 grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+        <article class="rounded-2xl border border-cyan-500/20 bg-slate-900/80 p-5 shadow-[0_0_0_1px_rgba(34,211,238,0.08)]">
+          <header class="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold text-white">Lineas temporales TTFB en tiempo real</h2>
+              <p class="text-sm text-slate-300">Sitios con mayor carga o degradacion durante la ultima hora.</p>
+            </div>
+            <p class="text-xs text-slate-400">Series activas: {{ normalizedTrafficOverview.timelines.length }}</p>
+          </header>
+
+          <div v-if="trafficLineSeries.length > 0" class="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/80 p-2">
+            <VueApexCharts type="line" height="320" :options="trafficLineOptions" :series="trafficLineSeries" />
+          </div>
+          <div v-else class="rounded-xl border border-dashed border-slate-700 bg-slate-950/60 px-4 py-12 text-center text-sm text-slate-400">
+            Sin muestras suficientes para construir la linea temporal.
+          </div>
+        </article>
+
+        <article class="rounded-2xl border border-amber-500/20 bg-slate-900/80 p-5 shadow-[0_0_0_1px_rgba(245,158,11,0.08)]">
+          <header class="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-semibold text-white">Matriz de calor operativa</h2>
+              <p class="text-sm text-slate-300">Vista global para detectar saturacion simultanea entre mas de 200 sitios.</p>
+            </div>
+            <p class="text-xs text-slate-400">Sitios: {{ normalizedTrafficOverview.heatmap.length }}</p>
+          </header>
+
+          <div v-if="normalizedTrafficOverview.heatmap.length > 0" class="grid max-h-[28rem] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 xl:grid-cols-2 2xl:grid-cols-3">
+            <article
+              v-for="item in normalizedTrafficOverview.heatmap"
+              :key="item.siteId"
+              class="rounded-xl border border-white/10 p-3 transition hover:border-cyan-300/40"
+              :style="heatmapCellStyle(item)"
+              :title="heatmapTitle(item)"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-semibold text-white">{{ item.name }}</p>
+                  <p class="truncate text-[11px] uppercase tracking-wide text-slate-300/80">{{ item.domain }}</p>
+                </div>
+                <span class="rounded-full px-2 py-1 text-[10px] font-semibold" :class="statusClass(item.statusCode)">
+                  {{ item.status }}
+                </span>
+              </div>
+
+              <div class="mt-4 grid grid-cols-2 gap-2 text-xs text-slate-100">
+                <div>
+                  <p class="text-[10px] uppercase tracking-wide text-slate-300/80">Carga</p>
+                  <p class="mt-1 text-lg font-semibold">{{ item.loadIndex }}</p>
+                </div>
+                <div>
+                  <p class="text-[10px] uppercase tracking-wide text-slate-300/80">TTFB</p>
+                  <p class="mt-1 text-lg font-semibold">{{ item.currentLatencyMs ?? item.avgLatencyMs ?? 'N/A' }}<span class="ml-1 text-xs font-normal text-slate-300">ms</span></p>
+                </div>
+                <div>
+                  <p class="text-[10px] uppercase tracking-wide text-slate-300/80">RPM</p>
+                  <p class="mt-1 font-medium">{{ item.currentRpm ?? item.avgRpm ?? 'N/A' }}</p>
+                </div>
+                <div>
+                  <p class="text-[10px] uppercase tracking-wide text-slate-300/80">Pico</p>
+                  <p class="mt-1 font-medium">{{ item.peakLatencyMs ?? 'N/A' }} ms</p>
+                </div>
+              </div>
+            </article>
+          </div>
+          <div v-else class="rounded-xl border border-dashed border-slate-700 bg-slate-950/60 px-4 py-12 text-center text-sm text-slate-400">
+            No hay trafico reciente para poblar la matriz de calor.
+          </div>
+        </article>
+      </section>
+
       <section class="mt-8 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
         <header class="mb-4">
           <h2 class="text-lg font-semibold">Filtros del tablero</h2>
@@ -347,6 +418,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { router } from '@inertiajs/vue3'
+import type { ApexOptions } from 'apexcharts'
+import VueApexCharts from 'vue3-apexcharts'
 
 const INITIAL_PER_PAGE = 50
 const PER_PAGE_STEP = 50
@@ -454,6 +527,41 @@ type SiteTelemetry = {
   openVulnerabilities: number
 }
 
+type TrafficHeatmapItem = {
+  siteId: number
+  name: string
+  domain: string
+  status: 'ACTIVO' | 'DEGRADADO' | 'CAÍDO' | 'DESCONOCIDO'
+  statusCode: 'up' | 'down' | 'degraded' | 'unknown'
+  currentLatencyMs: number | null
+  avgLatencyMs: number | null
+  peakLatencyMs: number | null
+  currentRpm: number | null
+  avgRpm: number | null
+  errorRatePct: number
+  loadIndex: number
+  sampleCount: number
+  updatedAt: string | null
+}
+
+type TrafficTimeline = {
+  siteId: number
+  name: string
+  status: 'ACTIVO' | 'DEGRADADO' | 'CAÍDO' | 'DESCONOCIDO'
+  statusCode: 'up' | 'down' | 'degraded' | 'unknown'
+  currentLatencyMs: number | null
+  currentRpm: number | null
+  loadIndex: number
+  points: Array<{ at: string | null; latencyMs: number | null; rpm: number | null }>
+}
+
+type TrafficOverview = {
+  window: string
+  heatmap: TrafficHeatmapItem[]
+  timelines: TrafficTimeline[]
+  updatedAt: string
+}
+
 type TimelineItem = {
   id: number
   checked_at: string
@@ -489,6 +597,7 @@ type DashboardProps = {
   }
   groups?: GroupItem[]
   siteTelemetry?: SiteTelemetry[]
+  trafficOverview?: Partial<TrafficOverview>
   timeline?: TimelineItem[]
   openAlerts?: AlertItem[]
   openAlertsCount?: number
@@ -528,6 +637,13 @@ const normalizedPipelineMetrics = computed<PipelineMetrics>(() => ({
     ramAvgPct: null,
     diskAvgPct: null,
   },
+}))
+
+const normalizedTrafficOverview = computed<TrafficOverview>(() => ({
+  window: props.trafficOverview?.window ?? '1h',
+  heatmap: props.trafficOverview?.heatmap ?? [],
+  timelines: props.trafficOverview?.timelines ?? [],
+  updatedAt: props.trafficOverview?.updatedAt ?? props.updatedAt ?? new Date().toISOString(),
 }))
 
 const normalizedGroups = computed<GroupItem[]>(() => props.groups ?? [])
@@ -598,6 +714,55 @@ const formattedUpdatedAt = computed(() => {
   return Number.isNaN(parsed.getTime()) ? 'N/A' : parsed.toLocaleString('es-MX')
 })
 
+const trafficLineSeries = computed(() => {
+  return normalizedTrafficOverview.value.timelines.map((item) => ({
+    name: item.name,
+    data: item.points
+      .filter((point) => point.at !== null)
+      .map((point) => ({
+        x: new Date(point.at as string).getTime(),
+        y: point.latencyMs,
+      })),
+  }))
+})
+
+const trafficLineOptions = computed<ApexOptions>(() => ({
+  chart: {
+    type: 'line',
+    toolbar: { show: false },
+    animations: { enabled: true, speed: 350, animateGradually: { enabled: true, delay: 80 } },
+    zoom: { enabled: false },
+    background: 'transparent',
+    foreColor: '#cbd5e1',
+  },
+  stroke: { curve: 'smooth', width: 3 },
+  colors: ['#22d3ee', '#38bdf8', '#fb7185', '#f59e0b', '#34d399', '#a78bfa', '#f97316', '#facc15'],
+  grid: {
+    borderColor: 'rgba(148, 163, 184, 0.15)',
+    strokeDashArray: 4,
+  },
+  xaxis: {
+    type: 'datetime',
+    labels: { datetimeUTC: false, style: { colors: '#94a3b8' } },
+  },
+  yaxis: {
+    title: { text: 'TTFB (ms)', style: { color: '#94a3b8' } },
+    labels: { style: { colors: '#94a3b8' } },
+    min: 0,
+  },
+  tooltip: {
+    x: { format: 'HH:mm:ss' },
+    theme: 'dark',
+  },
+  legend: {
+    position: 'top',
+    horizontalAlign: 'left',
+    labels: { colors: '#cbd5e1' },
+  },
+  markers: { size: 0, hover: { sizeOffset: 4 } },
+  noData: { text: 'Sin datos de latencia recientes' },
+}))
+
 const statusClass = (status: SiteItem['current_status_code'] | TimelineItem['status_code'] | SiteItem['current_status'] | TimelineItem['status']) => {
   if (status === 'ACTIVO') status = 'up'
   if (status === 'DEGRADADO') status = 'degraded'
@@ -615,6 +780,25 @@ const protectionBadgeClass = (level?: string) => {
   if (level === 'Bajo') return 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
   if (level === 'Medio') return 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
   return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+}
+
+const heatmapCellStyle = (item: TrafficHeatmapItem) => {
+  const alpha = Math.min(0.92, Math.max(0.2, item.loadIndex / 100))
+  const tone = item.statusCode === 'down'
+    ? '244 63 94'
+    : item.statusCode === 'degraded'
+      ? '245 158 11'
+      : item.loadIndex >= 65
+        ? '14 165 233'
+        : '34 197 94'
+
+  return {
+    background: `linear-gradient(135deg, rgba(${tone} / ${alpha}) 0%, rgba(15 23 42 / 0.95) 100%)`,
+  }
+}
+
+const heatmapTitle = (item: TrafficHeatmapItem) => {
+  return `${item.name} | Estado: ${item.status} | Carga: ${item.loadIndex} | TTFB actual: ${item.currentLatencyMs ?? item.avgLatencyMs ?? 'N/A'} ms | RPM: ${item.currentRpm ?? item.avgRpm ?? 'N/A'}`
 }
 
 const toggleExpanded = (siteId: number) => {
@@ -670,7 +854,7 @@ const refreshDashboard = () => {
     preserveState: true,
     preserveScroll: true,
     replace: true,
-    only: ['sites', 'siteTelemetry', 'statusCounts', 'statusByGroup', 'pipelineMetrics', 'timeline', 'openAlerts', 'openAlertsCount', 'criticalAlertsCount', 'updatedAt'],
+    only: ['sites', 'siteTelemetry', 'statusCounts', 'statusByGroup', 'pipelineMetrics', 'trafficOverview', 'timeline', 'openAlerts', 'openAlertsCount', 'criticalAlertsCount', 'updatedAt'],
   })
 }
 
