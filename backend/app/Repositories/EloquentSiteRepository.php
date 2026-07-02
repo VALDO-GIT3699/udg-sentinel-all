@@ -28,8 +28,10 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
         $perPage = max(1, min(500, $perPage));
 
         return $this->dashboardInventoryQuery($filters)
-            ->with(['siteGroup', 'latestCheck'])
-            ->orderByRaw('LOWER(sites.name)')
+            ->distinct()
+            ->selectRaw('LOWER(sites.name) as dashboard_sort_name')
+            ->with(['latestCheck'])
+            ->orderBy('dashboard_sort_name')
             ->orderBy('sites.name')
             ->orderBy('sites.id')
             ->paginate($perPage)
@@ -295,10 +297,12 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
         }
 
         if (isset($filters['search']) && trim((string) $filters['search']) !== '') {
+            $driver = Site::query()->getConnection()->getDriverName();
+            $operator = $driver === 'pgsql' ? 'ilike' : 'like';
             $search = '%' . trim((string) $filters['search']) . '%';
-            $query->where(function (Builder $nestedQuery) use ($search): void {
-                $nestedQuery->where('sites.name', 'like', $search)
-                    ->orWhere('sites.domain', 'like', $search);
+            $query->where(function (Builder $nestedQuery) use ($search, $operator): void {
+                $nestedQuery->where('sites.name', $operator, $search)
+                    ->orWhere('sites.domain', $operator, $search);
             });
         }
 

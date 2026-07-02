@@ -18,6 +18,10 @@ final class AlertNotificationService
      */
     public function dispatch(Alert $alert, array $extra = []): void
     {
+        if (! (bool) config('monitoring.notifications.external_enabled', false)) {
+            return;
+        }
+
         $siteName = (string) optional($alert->site)->name;
         $siteUrl = (string) optional($alert->site)->url;
 

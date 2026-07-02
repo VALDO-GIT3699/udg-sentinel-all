@@ -29,6 +29,14 @@ Route::middleware(['web'])->group(function () {
         ->middleware('permission:monitoring.view_dashboard')
         ->name('monitoring.dashboard');
 
+    Route::post('monitoring/dashboard/scan-all', [DashboardController::class, 'scanAll'])
+        ->middleware('permission:monitoring.view_dashboard')
+        ->name('monitoring.dashboard.scan-all');
+
+    Route::post('monitoring/sites/{siteId}/scan', [DashboardController::class, 'scanSite'])
+        ->middleware('permission:monitoring.view_dashboard')
+        ->name('monitoring.sites.scan');
+
     Route::get('monitoring/groups/{group}/view', [DashboardController::class, 'groupView'])
         ->middleware('permission:monitoring.view_dashboard')
         ->name('monitoring.groups.view');

@@ -99,6 +99,53 @@ final class DashboardAlertsFeatureTest extends TestCase
     }
 
     #[Test]
+    public function dashboard_marks_stale_sites_as_unknown_even_when_their_raw_status_is_up(): void
+    {
+        $user = User::factory()->create();
+
+        Permission::findOrCreate('monitoring.view_dashboard', 'web');
+        $user->givePermissionTo('monitoring.view_dashboard');
+
+        $group = SiteGroup::query()->create([
+            'name' => 'Servicios web',
+            'slug' => 'servicios-web',
+            'description' => null,
+            'responsible_name' => null,
+            'responsible_email' => null,
+            'color' => '#0EA5E9',
+        ]);
+
+        Site::query()->create([
+            'site_group_id' => $group->id,
+            'name' => 'Sitio operativo sin actualizacion',
+            'slug' => 'sitio-operativo-sin-actualizacion',
+            'domain' => 'stale.udg.mx',
+            'url' => 'https://stale.udg.mx',
+            'is_active' => true,
+            'is_monitored' => true,
+            'priority' => 1,
+            'current_status' => 'up',
+            'current_score' => 95,
+            'current_score_level' => 'good',
+            'last_checked_at' => now()->subHours(2),
+            'check_interval_min' => 10,
+            'notes' => null,
+            'tags' => [],
+        ]);
+
+        $response = $this->actingAs($user)->get(route('monitoring.dashboard'), [
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('props.statusCounts.unknown', 1);
+        $response->assertJsonPath('props.statusCounts.up', 0);
+        $response->assertJsonPath('props.sites.data.0.display_status_code', 'unknown');
+        $response->assertJsonPath('props.sites.data.0.diagnostic_label', 'Sin actualizar');
+    }
+
+    #[Test]
     public function dashboard_is_forbidden_without_permission(): void
     {
         $user = User::factory()->create();

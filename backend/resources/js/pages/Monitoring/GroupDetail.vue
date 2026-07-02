@@ -5,23 +5,28 @@
         <a href="/monitoring/dashboard" class="text-sm text-cyan-300 hover:text-cyan-200">Volver al dashboard</a>
         <h1 class="text-3xl font-semibold text-white">Grupo: {{ group.name }}</h1>
         <p class="text-sm text-slate-300">Sitios en este grupo sin sub-anidacion. Actualizado: {{ formattedUpdatedAt }}</p>
+        <div>
+          <button type="button" class="rounded-lg border border-amber-500/50 px-4 py-2 text-sm font-semibold text-amber-200 transition hover:border-amber-300" @click="scanAllSites">
+            Recorrer todos
+          </button>
+        </div>
       </header>
 
       <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <article class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-          <p class="text-xs uppercase tracking-wide text-emerald-300">UP</p>
+          <p class="text-xs uppercase tracking-wide text-emerald-300">Activos</p>
           <p class="mt-2 text-3xl font-semibold">{{ groupStatus('up') }}</p>
         </article>
         <article class="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
-          <p class="text-xs uppercase tracking-wide text-amber-300">DEGRADED</p>
+          <p class="text-xs uppercase tracking-wide text-amber-300">Degradados</p>
           <p class="mt-2 text-3xl font-semibold">{{ groupStatus('degraded') }}</p>
         </article>
         <article class="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
-          <p class="text-xs uppercase tracking-wide text-rose-300">DOWN</p>
+          <p class="text-xs uppercase tracking-wide text-rose-300">Caidos</p>
           <p class="mt-2 text-3xl font-semibold">{{ groupStatus('down') }}</p>
         </article>
         <article class="rounded-xl border border-slate-500/30 bg-slate-500/10 p-4">
-          <p class="text-xs uppercase tracking-wide text-slate-300">UNKNOWN</p>
+          <p class="text-xs uppercase tracking-wide text-slate-300">Sin clasificar</p>
           <p class="mt-2 text-3xl font-semibold">{{ groupStatus('unknown') }}</p>
         </article>
       </section>
@@ -44,10 +49,10 @@
             class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
           >
             <option value="all">Todos los estados</option>
-            <option value="up">UP</option>
-            <option value="degraded">DEGRADED</option>
-            <option value="down">DOWN</option>
-            <option value="unknown">UNKNOWN</option>
+            <option value="up">Activo</option>
+            <option value="degraded">Degradado</option>
+            <option value="down">Caido</option>
+            <option value="unknown">Sin clasificar</option>
           </select>
 
           <select
@@ -55,10 +60,10 @@
             class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
           >
             <option :value="null">Todas las prioridades</option>
-            <option :value="1">Critica (1)</option>
-            <option :value="2">Alta (2)</option>
-            <option :value="3">Media (3)</option>
-            <option :value="4">Baja (4)</option>
+            <option :value="1">Critica</option>
+            <option :value="2">Alta</option>
+            <option :value="3">Media</option>
+            <option :value="4">Baja</option>
           </select>
 
           <div class="flex items-center gap-2">
@@ -89,7 +94,9 @@
               <tr v-for="site in sites.data" :key="site.id" class="border-b border-slate-800">
                 <td class="px-3 py-2">
                   <p class="font-medium text-white">{{ fallbackSiteName(site) }}</p>
-                  <p class="text-xs text-slate-400">{{ fallbackUrl(site.url) }}</p>
+                  <a :href="safeSiteUrl(site.url)" target="_blank" rel="noopener noreferrer" class="text-xs text-cyan-300 hover:text-cyan-200">
+                    {{ fallbackUrl(site.url) }}
+                  </a>
                 </td>
                 <td class="px-3 py-2">
                   <div class="flex flex-wrap items-center gap-2">
@@ -108,7 +115,12 @@
                 <td class="px-3 py-2 text-slate-300">{{ fallbackPriority(site.priority) }}</td>
                 <td class="px-3 py-2 text-slate-400">{{ formatCheckTime(site.last_checked_at, site.current_status) }}</td>
                 <td class="px-3 py-2">
-                  <a :href="`/monitoring/sites/${site.id}/detail`" class="text-cyan-300 hover:text-cyan-200">Ver detalle</a>
+                  <div class="flex items-center gap-3">
+                    <a :href="`/monitoring/sites/${site.id}/detail`" class="text-cyan-300 hover:text-cyan-200">Ver detalle</a>
+                    <button type="button" class="rounded border border-cyan-700 px-2 py-1 text-xs text-cyan-200 hover:border-cyan-500" @click="scanSingleSite(site.id)">
+                      Reescanear
+                    </button>
+                  </div>
                 </td>
               </tr>
               <tr v-if="sites.data.length === 0">
@@ -219,17 +231,32 @@ const statusBadgeClass = (status: SiteItem['current_status']) => {
 }
 
 const statusLabel = (status: SiteItem['current_status']) => {
-  if (status === 'up') return 'UP'
-  if (status === 'degraded') return 'DEGRADED'
-  if (status === 'down') return 'DOWN'
-  return 'UNKNOWN'
+  if (status === 'up') return 'ACTIVO'
+  if (status === 'degraded') return 'DEGRADADO'
+  if (status === 'down') return 'CAIDO'
+  return 'SIN CLASIFICAR'
 }
 
 const fallbackSiteName = (site: SiteItem) => site.name?.trim() || site.url?.trim() || `Sitio #${site.id}`
 
 const fallbackUrl = (url: string | null) => url?.trim() || 'Sin URL registrada'
 
-const fallbackPriority = (priority: number | null) => priority ?? 'N/D'
+const fallbackPriority = (priority: number | null) => {
+  if (priority === 1) return 'Critica'
+  if (priority === 2) return 'Alta'
+  if (priority === 3) return 'Media'
+  if (priority === 4) return 'Baja'
+  return 'Sin definir'
+}
+
+const safeSiteUrl = (url: string | null) => {
+  const value = url?.trim() || ''
+  if (value === '') {
+    return '#'
+  }
+
+  return value.startsWith('http://') || value.startsWith('https://') ? value : `https://${value}`
+}
 
 const formatCheckTime = (value: string | null, status: SiteItem['current_status']) => {
   if (!value) {
@@ -256,5 +283,17 @@ const clearFilters = () => {
   localFilters.search = ''
   localFilters.priority = null
   applyFilters()
+}
+
+const scanSingleSite = (siteId: number) => {
+  router.post(`/monitoring/sites/${siteId}/scan`, {}, {
+    preserveScroll: true,
+  })
+}
+
+const scanAllSites = () => {
+  router.post('/monitoring/dashboard/scan-all', {}, {
+    preserveScroll: true,
+  })
 }
 </script>

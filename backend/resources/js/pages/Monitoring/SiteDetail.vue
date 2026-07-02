@@ -6,7 +6,8 @@
           <a href="/monitoring/dashboard" class="text-sm text-cyan-300 hover:text-cyan-200">Volver al dashboard</a>
           <h1 class="mt-2 text-3xl font-semibold text-white sm:text-4xl">{{ site.name }}</h1>
           <p class="mt-2 text-sm text-slate-300">
-            {{ site.url }} · Estado actual: <span class="font-semibold" :class="statusTextClass(site.current_status)">{{ statusLabel(site.current_status) }}</span>
+            <a :href="safeSiteUrl" target="_blank" rel="noopener noreferrer" class="text-cyan-300 hover:text-cyan-200">{{ site.url }}</a>
+            · Estado actual: <span class="font-semibold" :class="statusTextClass(site.current_status)">{{ statusLabel(site.current_status) }}</span>
           </p>
         </div>
         <p class="text-xs text-slate-400">Actualizado: {{ formatDate(updatedAt) }}</p>
@@ -14,11 +15,11 @@
 
       <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <article class="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5">
-          <p class="text-xs uppercase tracking-[0.18em] text-emerald-300">Uptime 24h</p>
+          <p class="text-xs uppercase tracking-[0.18em] text-emerald-300">Disponibilidad ultimas 24 horas</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ uptime24h.toFixed(2) }}%</p>
         </article>
         <article class="rounded-2xl border border-sky-500/25 bg-sky-500/10 p-5">
-          <p class="text-xs uppercase tracking-[0.18em] text-sky-300">TTFB promedio 24h</p>
+          <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Tiempo de primera respuesta promedio (24 horas)</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ avgResponse24h !== null ? `${avgResponse24h} ms` : 'Sin datos' }}</p>
         </article>
         <article class="rounded-2xl border border-rose-500/25 bg-rose-500/10 p-5">
@@ -33,15 +34,15 @@
 
       <section class="mt-7 grid gap-4 md:grid-cols-3">
         <article class="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-emerald-300">Checks UP</p>
+          <p class="text-xs uppercase tracking-[0.18em] text-emerald-300">Mediciones activas</p>
           <p class="mt-2 text-3xl font-semibold text-white">{{ statusBreakdown24h.up ?? 0 }}</p>
         </article>
         <article class="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-amber-300">Checks degradados</p>
+          <p class="text-xs uppercase tracking-[0.18em] text-amber-300">Mediciones degradadas</p>
           <p class="mt-2 text-3xl font-semibold text-white">{{ statusBreakdown24h.degraded ?? 0 }}</p>
         </article>
         <article class="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-rose-300">Checks DOWN</p>
+          <p class="text-xs uppercase tracking-[0.18em] text-rose-300">Mediciones caidas</p>
           <p class="mt-2 text-3xl font-semibold text-white">{{ statusBreakdown24h.down ?? 0 }}</p>
         </article>
       </section>
@@ -59,7 +60,7 @@
       <section class="mt-8 grid gap-6">
         <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
           <header class="mb-4 flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-white">Línea de tiempo TTFB (latencia)</h2>
+            <h2 class="text-lg font-semibold text-white">Línea de tiempo de respuesta (latencia)</h2>
             <p class="text-xs text-slate-400">Ventana de 24 horas</p>
           </header>
           <VueApexCharts
@@ -72,7 +73,7 @@
           <div v-else class="space-y-3 rounded-2xl border border-slate-800 bg-slate-900 p-4">
             <div class="h-3 w-56 animate-pulse rounded bg-slate-700/80" />
             <div class="h-40 animate-pulse rounded-xl bg-slate-800/90" />
-            <p class="text-xs text-slate-400">La linea de tiempo aparecera automaticamente cuando se registren checks.</p>
+            <p class="text-xs text-slate-400">La linea de tiempo aparecera automaticamente cuando se registren mediciones.</p>
           </div>
         </article>
 
@@ -116,8 +117,8 @@
 
         <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
           <header class="mb-4 flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-white">Disponibilidad de uptime</h2>
-            <p class="text-xs text-slate-400">Estados por chequeo en 24 horas</p>
+            <h2 class="text-lg font-semibold text-white">Disponibilidad general</h2>
+            <p class="text-xs text-slate-400">Estados por medicion en 24 horas</p>
           </header>
           <VueApexCharts
             v-if="!isTelemetryInitializing"
@@ -135,7 +136,7 @@
 
       <section class="mt-8 grid gap-6 lg:grid-cols-2">
         <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
-          <h2 class="text-lg font-semibold text-white">Certificado SSL</h2>
+          <h2 class="text-lg font-semibold text-white">Certificado de seguridad del sitio</h2>
           <div
             v-if="isTelemetryInitializing && !hasSslTelemetry"
             class="mt-4 space-y-3 rounded-2xl border border-cyan-400/25 bg-cyan-500/5 p-4"
@@ -212,6 +213,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { ApexOptions } from 'apexcharts'
 import VueApexCharts from 'vue3-apexcharts'
 
 type TimelinePoint = {
@@ -288,6 +290,14 @@ const hasSslTelemetry = computed(() => {
   return Boolean(cert.valid_until || cert.issuer || cert.days_remaining !== null || cert.algorithm)
 })
 const hasSecurityHeadersTelemetry = computed(() => securityHeaders.value.some((header) => header.present || header.value.trim() !== ''))
+const safeSiteUrl = computed(() => {
+  const value = props.site.url?.trim() || ''
+  if (value === '') {
+    return '#'
+  }
+
+  return value.startsWith('http://') || value.startsWith('https://') ? value : `https://${value}`
+})
 
 const ttfbSeries = computed(() => [{
   name: 'TTFB (ms)',
@@ -320,7 +330,7 @@ const traffic1hSeries = computed(() => [{
     .map((point) => ({ x: point.at, y: point.rpm })),
 }])
 
-const baseChartOptions = {
+const baseChartOptions: ApexOptions = {
   chart: {
     toolbar: { show: false },
     animations: { enabled: true },
@@ -357,7 +367,7 @@ const baseChartOptions = {
   },
 }
 
-const ttfbChartOptions = computed(() => ({
+const ttfbChartOptions = computed<ApexOptions>(() => ({
   ...baseChartOptions,
   colors: ['#22D3EE'],
   yaxis: {
@@ -369,7 +379,7 @@ const ttfbChartOptions = computed(() => ({
   },
 }))
 
-const traffic24hOptions = computed(() => ({
+const traffic24hOptions = computed<ApexOptions>(() => ({
   ...baseChartOptions,
   colors: ['#60A5FA'],
   fill: {
@@ -387,7 +397,7 @@ const traffic24hOptions = computed(() => ({
   },
 }))
 
-const traffic1hOptions = computed(() => ({
+const traffic1hOptions = computed<ApexOptions>(() => ({
   ...baseChartOptions,
   colors: ['#F59E0B'],
   plotOptions: {
@@ -401,7 +411,7 @@ const traffic1hOptions = computed(() => ({
   },
 }))
 
-const uptimeOptions = computed(() => ({
+const uptimeOptions = computed<ApexOptions>(() => ({
   ...baseChartOptions,
   colors: ['#34D399'],
   yaxis: {

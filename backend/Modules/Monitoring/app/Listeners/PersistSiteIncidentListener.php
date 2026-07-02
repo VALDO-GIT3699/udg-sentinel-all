@@ -62,6 +62,10 @@ final class PersistSiteIncidentListener
         ]);
 
         if ($severity === 'critical') {
+            if (! (bool) config('monitoring.notifications.external_enabled', false)) {
+                return;
+            }
+
             try {
                 $this->notifyCriticalIncident($alert, $site, $previousStatus, $nextStatus, $detectedAt);
             } catch (\Throwable $exception) {

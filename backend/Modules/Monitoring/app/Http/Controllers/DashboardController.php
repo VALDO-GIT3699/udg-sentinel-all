@@ -9,10 +9,14 @@ use App\Contracts\Repositories\SiteCheckRepositoryInterface;
 use App\Contracts\Repositories\SiteRepositoryInterface;
 use App\Http\Controllers\Controller;
 use App\Models\SiteGroup;
+use App\Models\Site;
+use App\Models\SiteCheck;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redis;
+use Modules\Monitoring\Jobs\RunHeadCheckJob;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -47,11 +51,16 @@ final class DashboardController extends Controller
             filters: array_filter($filters, static fn ($value): bool => $value !== null && $value !== '')
         );
 
+        $sites = $this->mapSitesForDashboard($sites);
+
         return Inertia::render('Monitoring/Dashboard', [
             'filters' => [
                 'search' => (string) ($filters['search'] ?? ''),
+                'status' => (string) ($filters['status'] ?? 'all'),
             ],
-            'statusCounts' => $this->siteRepository->countByStatus(),
+            'statusCounts' => $this->dashboardStatusCounts(),
+            'diagnosticBreakdown' => $this->diagnosticBreakdown(),
+            'searchSuggestions' => $this->searchSuggestions(),
             'pipelineMetrics' => $this->pipelineMetrics(),
             'sites' => $sites,
             'refreshIntervalMs' => self::DASHBOARD_REFRESH_INTERVAL_MS,
@@ -108,12 +117,58 @@ final class DashboardController extends Controller
                 perPage: max(1, min(100, $request->integer('per_page', 20))),
                 filters: array_filter($filters, static fn ($value): bool => $value !== null && $value !== '')
             ),
-            'statusCounts' => $this->siteRepository->countByStatus($group->id),
+            'statusCounts' => $this->dashboardStatusCounts($group->id),
             'openAlerts' => $this->alertRepository->recentOpenForGroup($group->id, 20),
             'updatedAt' => now()->toIso8601String(),
         ]);
     }
 
+    public function scanSite(int $siteId)
+    {
+        $site = Site::query()
+            ->whereKey($siteId)
+            ->where('is_active', true)
+            ->where('is_monitored', true)
+            ->first();
+
+        abort_if(! $site instanceof Site, 404);
+
+        // Reescaneo rapido: disponibilidad del sitio, sin bloquear la interfaz.
+        $site->forceFill(['last_checked_at' => null])->save();
+        $this->dispatchMonitoringJob(RunHeadCheckJob::class, (int) $site->id);
+
+        return back()->with('success', 'Se programo la actualizacion del sitio seleccionado.');
+    }
+
+    public function scanAll(Request $request)
+    {
+        if (! Cache::add('monitoring:manual-scan-all:cooldown', now()->timestamp, 45)) {
+            return back()->with('warning', 'Ya hay una actualizacion masiva en curso. Espera unos segundos e intenta de nuevo.');
+        }
+
+        $limit = max(
+            1,
+            (int) Site::query()->where('is_active', true)->where('is_monitored', true)->count()
+        );
+
+        $batch = max(10, min(60, (int) config('monitoring.scan.default_batch_size', 40)));
+
+        // Estrategia durable: solo marca los sitios para que el scheduler los procese progresivamente.
+        Site::query()
+            ->where('is_active', true)
+            ->where('is_monitored', true)
+            ->update(['last_checked_at' => null]);
+
+        app()->terminating(function () use ($limit, $batch): void {
+            $this->dispatchMassiveScan(min($limit, $batch), $batch);
+        });
+
+        return back()->with('success', 'Se programo una actualizacion masiva progresiva. El tablero se actualizara por lotes sin saturar el sistema.');
+    }
+
+    /**
+     * @return array<string, int>
+     */
     /**
      * @return array<string, mixed>
      */
@@ -151,6 +206,274 @@ final class DashboardController extends Controller
             'avgLatencyMs' => $avgLatencyMsLastHour,
             'queueDepth' => $queueDepth,
         ];
+    }
+
+    private function mapSitesForDashboard(LengthAwarePaginator $sites): LengthAwarePaginator
+    {
+        $sites->setCollection(
+            $sites->getCollection()->map(function (Site $site): array {
+                $latestCheck = $site->latestCheck;
+                $status = strtolower((string) ($site->current_status ?? 'unknown'));
+                $diagnosis = $this->resolveSiteDiagnosis($site, $status, $latestCheck);
+                $displayStatus = $this->resolveDashboardStatus($site, $status, $latestCheck);
+
+                return [
+                    'id' => (int) $site->id,
+                    'name' => $site->name,
+                    'domain' => $site->domain,
+                    'url' => $site->url,
+                    'current_status' => $site->current_status,
+                    'current_status_code' => $status,
+                    'display_status_code' => $displayStatus,
+                    'last_checked_at' => optional($site->last_checked_at)?->toIso8601String(),
+                    'diagnostic_bucket' => $diagnosis['bucket'],
+                    'diagnostic_label' => $diagnosis['label'],
+                    'diagnostic_reason' => $diagnosis['reason'],
+                ];
+            })
+        );
+
+        return $sites;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function dashboardStatusCounts(?int $groupId = null): array
+    {
+        $counts = [
+            'up' => 0,
+            'down' => 0,
+            'degraded' => 0,
+            'unknown' => 0,
+        ];
+
+        $query = Site::query()
+            ->where('is_active', true)
+            ->where('is_monitored', true)
+            ->with('latestCheck');
+
+        if ($groupId !== null) {
+            $query->where('site_group_id', $groupId);
+        }
+
+        foreach ($query->get() as $site) {
+            $status = strtolower((string) ($site->current_status ?? 'unknown'));
+            $resolvedStatus = $this->resolveDashboardStatus($site, $status, $site->latestCheck);
+
+            if (! array_key_exists($resolvedStatus, $counts)) {
+                $counts['unknown']++;
+
+                continue;
+            }
+
+            $counts[$resolvedStatus]++;
+        }
+
+        return $counts;
+    }
+
+    private function resolveDashboardStatus(Site $site, string $status, ?SiteCheck $latestCheck): string
+    {
+        $diagnosis = $this->resolveSiteDiagnosis($site, $status, $latestCheck);
+
+        return match ((string) ($diagnosis['bucket'] ?? 'sin_actualizar')) {
+            'operativo' => 'up',
+            'no_responde' => 'down',
+            'respuesta_lenta', 'responde_con_errores', 'inestable' => 'degraded',
+            default => 'unknown',
+        };
+    }
+
+    private function resolveSiteDiagnosis(Site $site, string $status, ?SiteCheck $latestCheck): array
+    {
+        $errorMessage = trim((string) ($latestCheck?->error_message ?? ''));
+        $httpCode = $latestCheck?->http_code;
+        $responseTimeMs = $latestCheck?->response_time_ms;
+        $normalizedError = mb_strtolower($errorMessage);
+
+        $checkInterval = max(1, (int) ($site->check_interval_min ?? 5));
+        $staleMinutes = max(3, $checkInterval * 3);
+        $lastCheckedAt = $site->last_checked_at;
+
+        if ($lastCheckedAt === null || $lastCheckedAt->lt(now()->subMinutes($staleMinutes))) {
+            return [
+                'bucket' => 'sin_actualizar',
+                'label' => 'Sin actualizar',
+                'reason' => 'No se recibieron mediciones recientes para este sitio.',
+            ];
+        }
+
+        if ($status === 'up') {
+            return [
+                'bucket' => 'operativo',
+                'label' => 'Operativo',
+                'reason' => 'Respuesta estable dentro de los parametros esperados.',
+            ];
+        }
+
+        $isTimeout = $normalizedError !== '' && (str_contains($normalizedError, 'timeout') || str_contains($normalizedError, 'curl error 28'));
+
+        if ($status === 'down') {
+            if ($isTimeout) {
+                return [
+                    'bucket' => 'no_responde',
+                    'label' => 'No responde',
+                    'reason' => 'El sitio no respondio dentro del tiempo maximo permitido.',
+                ];
+            }
+
+            return [
+                'bucket' => 'no_responde',
+                'label' => 'No responde',
+                'reason' => $errorMessage !== ''
+                    ? $errorMessage
+                    : ($httpCode !== null ? 'El servidor devolvio HTTP ' . $httpCode . '.' : 'No se obtuvo respuesta valida del sitio.'),
+            ];
+        }
+
+        if ($status === 'degraded') {
+            if ($isTimeout) {
+                return [
+                    'bucket' => 'inestable',
+                    'label' => 'Inestable',
+                    'reason' => 'Presenta timeouts intermitentes durante el monitoreo.',
+                ];
+            }
+
+            if ($httpCode !== null && $httpCode >= 400) {
+                return [
+                    'bucket' => 'responde_con_errores',
+                    'label' => 'Responde con errores',
+                    'reason' => 'Responde, pero devolvio HTTP ' . $httpCode . '.',
+                ];
+            }
+
+            if ($responseTimeMs !== null && $responseTimeMs >= 1500) {
+                return [
+                    'bucket' => 'respuesta_lenta',
+                    'label' => 'Respuesta lenta',
+                    'reason' => 'Tiempo de respuesta elevado (' . $responseTimeMs . ' ms).',
+                ];
+            }
+
+            return [
+                'bucket' => 'inestable',
+                'label' => 'Inestable',
+                'reason' => $errorMessage !== ''
+                    ? $errorMessage
+                    : 'Comportamiento intermitente fuera del umbral normal.',
+            ];
+        }
+
+        return [
+            'bucket' => 'sin_actualizar',
+            'label' => 'Sin actualizar',
+            'reason' => 'Aun no hay suficiente telemetria para clasificarlo con precision.',
+        ];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function diagnosticBreakdown(): array
+    {
+        $result = [
+            'operativo' => 0,
+            'respuesta_lenta' => 0,
+            'responde_con_errores' => 0,
+            'inestable' => 0,
+            'no_responde' => 0,
+            'sin_actualizar' => 0,
+        ];
+
+        $sites = Site::query()
+            ->where('is_active', true)
+            ->where('is_monitored', true)
+            ->with('latestCheck')
+            ->get();
+
+        foreach ($sites as $site) {
+            $status = strtolower((string) ($site->current_status ?? 'unknown'));
+            $diagnosis = $this->resolveSiteDiagnosis($site, $status, $site->latestCheck);
+            $bucket = (string) ($diagnosis['bucket'] ?? 'sin_actualizar');
+
+            if (! array_key_exists($bucket, $result)) {
+                $result['sin_actualizar']++;
+                continue;
+            }
+
+            $result[$bucket]++;
+        }
+
+        return $result;
+    }
+
+    private function dispatchMassiveScan(int $limit, int $batch): void
+    {
+        try {
+            Artisan::call('monitoring:dispatch-head-checks', [
+                '--limit' => $limit,
+                '--chunk' => $batch,
+                '--stagger' => 0,
+            ]);
+
+            Artisan::call('monitoring:dispatch-ssl-checks', [
+                '--limit' => $limit,
+                '--chunk' => $batch,
+                '--stagger' => 0,
+            ]);
+
+            Artisan::call('monitoring:dispatch-security-headers-checks', [
+                '--limit' => $limit,
+                '--chunk' => $batch,
+                '--stagger' => 0,
+            ]);
+
+            Artisan::call('monitoring:dispatch-technology-scans', [
+                '--limit' => $limit,
+            ]);
+        } catch (\Throwable) {
+            // El disparo masivo es best effort; nunca debe romper el flujo web.
+        }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function searchSuggestions(): array
+    {
+        $sites = Site::query()
+            ->where('is_active', true)
+            ->where('is_monitored', true)
+            ->orderByRaw('LOWER(name)')
+            ->limit(250)
+            ->get(['name', 'domain']);
+
+        return $sites
+            ->flatMap(static function (Site $site): array {
+                return array_values(array_filter([
+                    trim((string) $site->name),
+                    trim((string) $site->domain),
+                ], static fn (string $value): bool => $value !== ''));
+            })
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function dispatchMonitoringJob(string $jobClass, mixed ...$arguments): mixed
+    {
+        if ($this->shouldDispatchMonitoringSynchronously()) {
+            return $jobClass::dispatchSync(...$arguments);
+        }
+
+        return $jobClass::dispatch(...$arguments);
+    }
+
+    private function shouldDispatchMonitoringSynchronously(): bool
+    {
+        return app()->environment(['local', 'development', 'testing']);
     }
 
 }
