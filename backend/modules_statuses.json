@@ -1,4 +1,5 @@
 {
+    "Analytics": true,
     "Inventory": true,
     "Monitoring": true,
     "SSL": true,

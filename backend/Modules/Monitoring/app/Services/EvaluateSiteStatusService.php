@@ -13,6 +13,8 @@ use DateTimeInterface;
 use Modules\Monitoring\Events\SiteDownDetected;
 use Modules\Monitoring\Events\SiteRecovered;
 use Modules\Monitoring\Events\SiteStatusChanged;
+use Modules\Monitoring\Events\AvailabilityChanged;
+use Modules\Monitoring\Events\AlertResolved;
 
 final class EvaluateSiteStatusService
 {
@@ -92,6 +94,13 @@ final class EvaluateSiteStatusService
             ]
         );
 
+        event(new AvailabilityChanged(
+            siteId: (int) $lockedSite->id,
+            before: $previousStatus,
+            after: $nextStatus,
+            changedAt: $occurredAt->format(DATE_ATOM),
+        ));
+
         if (function_exists('activity')) {
             activity('monitoring')
                 ->performedOn($lockedSite)
@@ -120,6 +129,13 @@ final class EvaluateSiteStatusService
                     'resolved_at' => $occurredAt,
                     'resolved_by' => null,
                 ]);
+
+                event(new AlertResolved(
+                    alertId: (int) $openAlert->id,
+                    siteId: $openAlert->site_id !== null ? (int) $openAlert->site_id : null,
+                    event: (string) data_get($openAlert->context, 'event', 'alert.resolved'),
+                    resolvedAt: $occurredAt->format(DATE_ATOM),
+                ));
             }
 
             SiteEvent::record(

@@ -16,6 +16,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Modules\Monitoring\Events\AlertResolved;
+use Modules\Monitoring\Events\AlertTriggered;
 use Modules\Monitoring\Events\SecurityHeadersWeak;
 use Modules\Monitoring\Services\MonitoringHttpClientFactory;
 
@@ -157,6 +159,14 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
                         ],
                     ]);
 
+                    event(new AlertTriggered(
+                        alertId: (int) $alert->id,
+                        siteId: $alert->site_id !== null ? (int) $alert->site_id : null,
+                        severity: (string) $alert->severity,
+                        event: $event,
+                        triggeredAt: now()->toIso8601String(),
+                    ));
+
                     $alertNotificationService->dispatch($alert, [
                         'trigger' => 'security_exposed',
                     ]);
@@ -170,6 +180,13 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
                             'resolved_at' => now(),
                             'resolved_by' => null,
                         ]);
+
+                        event(new AlertResolved(
+                            alertId: (int) $alert->id,
+                            siteId: $alert->site_id !== null ? (int) $alert->site_id : null,
+                            event: (string) data_get($alert->context, 'event', 'alert.resolved'),
+                            resolvedAt: now()->toIso8601String(),
+                        ));
                     });
             }
         } catch (\Throwable) {

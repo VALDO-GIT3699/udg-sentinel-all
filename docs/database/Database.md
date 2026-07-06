@@ -41,6 +41,18 @@ site_groups ──< sites >── servers
     site_events (timeline)
 ```
 
+### 2.1 Extensión de Asset Intelligence y Analytics
+
+- `sites` incorpora atributos de inteligencia de activos:
+  - `asset_type`, `asset_role`, `asset_confidence_pct`
+  - `asset_classification_source`, `asset_last_classified_at`, `asset_classification_locked_at`
+  - `asset_classifier_version`, `asset_classification_evidence`
+- `asset_classifications` conserva historial inmutable de clasificaciones:
+  - `source`, `asset_type`, `asset_role`, `confidence_pct`, `scores`, `evidence`
+  - versionado de motor (`classifier_version`, `rule_engine_version`)
+  - trazabilidad (`rules_used`, `observations`, `recommendations`, `result_hash`)
+- `Analytics` consume estas entidades para KPIs, tendencias y calidad del clasificador sin duplicar dominios ni borrar historial.
+
 ---
 
 ## 3. Definición completa de tablas

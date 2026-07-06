@@ -15,6 +15,9 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Modules\Monitoring\Events\CertificateExpiring;
+use Modules\Monitoring\Events\AlertResolved;
+use Modules\Monitoring\Events\AlertTriggered;
 use Modules\Monitoring\Events\SslExpired;
 use Modules\Monitoring\Events\SslExpiringSoon;
 
@@ -244,6 +247,13 @@ final class RunSslCheckJob implements ShouldQueue
                         'resolved_at' => now(),
                         'resolved_by' => null,
                     ]);
+
+                    event(new AlertResolved(
+                        alertId: (int) $alert->id,
+                        siteId: $alert->site_id !== null ? (int) $alert->site_id : null,
+                        event: (string) data_get($alert->context, 'event', 'alert.resolved'),
+                        resolvedAt: now()->toIso8601String(),
+                    ));
                 });
         }
 
@@ -258,7 +268,7 @@ final class RunSslCheckJob implements ShouldQueue
             ],
         );
 
-        $alertRepository->create([
+        $createdAlert = $alertRepository->create([
             'site_id' => $site->id,
             'title' => $title,
             'message' => mb_substr($message, 0, 1000),
@@ -269,6 +279,14 @@ final class RunSslCheckJob implements ShouldQueue
                 'event' => $event,
             ],
         ]);
+
+        event(new AlertTriggered(
+            alertId: (int) $createdAlert->id,
+            siteId: $createdAlert->site_id !== null ? (int) $createdAlert->site_id : null,
+            severity: (string) $createdAlert->severity,
+            event: $event,
+            triggeredAt: now()->toIso8601String(),
+        ));
 
         if ($event === 'ssl.expired') {
             SslExpired::dispatch(
@@ -283,6 +301,13 @@ final class RunSslCheckJob implements ShouldQueue
                 severity: $severity,
                 checkedAt: now()->toIso8601String(),
             );
+
+            event(new CertificateExpiring(
+                siteId: (int) $site->id,
+                daysRemaining: $daysContext,
+                severity: $severity,
+                checkedAt: now()->toIso8601String(),
+            ));
         }
     }
 }

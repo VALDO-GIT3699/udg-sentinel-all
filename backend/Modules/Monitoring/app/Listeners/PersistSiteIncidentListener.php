@@ -12,6 +12,7 @@ use App\Notifications\SiteDownNotification;
 use App\Services\AlertNotificationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;
+use Modules\Monitoring\Events\AlertTriggered;
 use Modules\Monitoring\Events\SiteStatusChanged;
 use Modules\Monitoring\Support\MonitoringPermissionMatrix;
 
@@ -45,21 +46,33 @@ final class PersistSiteIncidentListener
             (int) $site->priority,
         );
 
-        $alert = $this->findExistingOpenIncident($site->id, $nextStatus) ?? $this->alertRepository->create([
-            'site_id' => $site->id,
-            'title' => $nextStatus === 'down' ? 'Incidente critico: sitio caido' : 'Incidente: sitio degradado',
-            'message' => (string) data_get($event->payload, 'cause', 'Cambio de estado detectado por el monitor.'),
-            'severity' => $severity,
-            'status' => 'open',
-            'triggered_at' => $detectedAt,
-            'context' => [
-                'event' => 'site.status.incident',
-                'site_status_before' => $previousStatus,
-                'site_status_after' => $nextStatus,
+        $alert = $this->findExistingOpenIncident($site->id, $nextStatus);
+
+        if (! $alert instanceof Alert) {
+            $alert = $this->alertRepository->create([
+                'site_id' => $site->id,
+                'title' => $nextStatus === 'down' ? 'Incidente critico: sitio caido' : 'Incidente: sitio degradado',
+                'message' => (string) data_get($event->payload, 'cause', 'Cambio de estado detectado por el monitor.'),
                 'severity' => $severity,
-                'event_occurred_at' => $detectedAt->toIso8601String(),
-            ],
-        ]);
+                'status' => 'open',
+                'triggered_at' => $detectedAt,
+                'context' => [
+                    'event' => 'site.status.incident',
+                    'site_status_before' => $previousStatus,
+                    'site_status_after' => $nextStatus,
+                    'severity' => $severity,
+                    'event_occurred_at' => $detectedAt->toIso8601String(),
+                ],
+            ]);
+
+            event(new AlertTriggered(
+                alertId: (int) $alert->id,
+                siteId: $alert->site_id !== null ? (int) $alert->site_id : null,
+                severity: (string) $alert->severity,
+                event: (string) data_get($alert->context, 'event', 'alert.triggered'),
+                triggeredAt: $detectedAt->toIso8601String(),
+            ));
+        }
 
         if ($severity === 'critical') {
             if (! (bool) config('monitoring.notifications.external_enabled', false)) {

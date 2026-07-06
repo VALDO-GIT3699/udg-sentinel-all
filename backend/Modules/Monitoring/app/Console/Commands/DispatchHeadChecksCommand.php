@@ -6,6 +6,7 @@ namespace Modules\Monitoring\Console\Commands;
 
 use App\Contracts\Repositories\SiteRepositoryInterface;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Modules\Monitoring\Jobs\RunHeadCheckJob;
 
 final class DispatchHeadChecksCommand extends Command
@@ -19,6 +20,28 @@ final class DispatchHeadChecksCommand extends Command
 
     public function handle(SiteRepositoryInterface $siteRepository): int
     {
+        if ((bool) Cache::get('monitoring:single-site-rescan:pause', false) === true) {
+            $prioritySiteId = (int) Cache::get('monitoring:single-site-rescan:site_id', 0);
+
+            if ($prioritySiteId <= 0) {
+                $this->warn('Despacho general en pausa temporal por reescaneo puntual.');
+                return self::SUCCESS;
+            }
+
+            $prioritySite = $siteRepository->findById($prioritySiteId);
+            if ($prioritySite !== null && $prioritySite->is_active && $prioritySite->is_monitored) {
+                $this->dispatchMonitoringJob(RunHeadCheckJob::class, (int) $prioritySite->id);
+                $this->line(sprintf('Site prioritario #%d despachado para HEAD check.', (int) $prioritySite->id));
+            }
+
+            Cache::forget('monitoring:single-site-rescan:pause');
+            Cache::forget('monitoring:single-site-rescan:site_id');
+
+            $this->info('Reescaneo prioritario completado. El escaneo general puede reanudarse.');
+
+            return self::SUCCESS;
+        }
+
         $limit = max(1, (int) $this->option('limit'));
         $chunkSize = max(1, (int) $this->option('chunk'));
         $staggerSeconds = max(0, (int) $this->option('stagger'));

@@ -6,15 +6,20 @@ namespace Modules\Monitoring\Http\Controllers;
 
 use App\Contracts\Repositories\SiteRepositoryInterface;
 use App\Models\Site;
+use App\Support\AssetIntelligenceSchema;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Modules\Inventory\Services\Classification\AssetClassificationService;
 
 final class SiteController extends Controller
 {
-    public function __construct(private readonly SiteRepositoryInterface $siteRepository)
-    {
+    public function __construct(
+        private readonly SiteRepositoryInterface $siteRepository,
+        private readonly AssetClassificationService $assetClassificationService,
+        private readonly AssetIntelligenceSchema $assetSchema,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -24,6 +29,11 @@ final class SiteController extends Controller
             'group_id' => $request->integer('group_id') ?: null,
             'search' => $request->string('search')->toString(),
             'priority' => $request->integer('priority') ?: null,
+            'asset_type' => $request->string('asset_type')->toString(),
+            'asset_role' => $request->string('asset_role')->toString(),
+            'classification_mode' => $request->string('classification_mode')->toString(),
+            'confidence_min' => $request->integer('confidence_min') ?: null,
+            'confidence_max' => $request->integer('confidence_max') ?: null,
         ];
 
         return response()->json([
@@ -114,5 +124,80 @@ final class SiteController extends Controller
         }
 
         return response()->json(status: 204);
+    }
+
+    public function setManualClassification(Request $request, Site $site): JsonResponse
+    {
+        if (! $this->assetSchema->isReady()) {
+            return response()->json([
+                'message' => 'Asset Intelligence aun no esta disponible en la base de datos. Ejecuta migraciones para habilitarlo.',
+            ], 409);
+        }
+
+        $validated = $request->validate([
+            'asset_type' => ['required', 'string', 'max:60'],
+            'asset_role' => ['required', 'string', 'max:80'],
+            'confidence_pct' => ['sometimes', 'integer', 'min:0', 'max:100'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:2000'],
+        ]);
+
+        $result = $this->assetClassificationService->setManualClassification(
+            $site,
+            $validated,
+            $request->user()?->id,
+        );
+
+        if (function_exists('activity')) {
+            activity()
+                ->performedOn($site)
+                ->withProperties([
+                    'action' => 'site.asset_classification.manual',
+                    'asset_type' => $result->assetType,
+                    'asset_role' => $result->assetRole,
+                    'confidence_pct' => $result->confidencePct,
+                ])
+                ->log('Clasificacion manual de activo aplicada');
+        }
+
+        return response()->json([
+            'message' => 'Clasificacion manual aplicada y bloqueada para sobrescritura automatica.',
+            'data' => $site->fresh(),
+        ]);
+    }
+
+    public function approveAutomaticClassification(Request $request, Site $site): JsonResponse
+    {
+        if (! $this->assetSchema->isReady()) {
+            return response()->json([
+                'message' => 'Asset Intelligence aun no esta disponible en la base de datos. Ejecuta migraciones para habilitarlo.',
+            ], 409);
+        }
+
+        $assetType = (string) ($site->asset_type ?? 'unknown');
+        $assetRole = (string) ($site->asset_role ?? 'unknown');
+
+        if ($assetType === 'unknown' && $assetRole === 'unknown') {
+            return response()->json([
+                'message' => 'No existe una clasificacion sugerida para aprobar en este activo.',
+            ], 422);
+        }
+
+        $confidence = (int) ($site->asset_confidence_pct ?? 0);
+
+        $this->assetClassificationService->setManualClassification(
+            $site,
+            [
+                'asset_type' => $assetType,
+                'asset_role' => $assetRole,
+                'confidence_pct' => $confidence,
+                'notes' => 'Aprobacion rapida desde cola de revision.',
+            ],
+            $request->user()?->id,
+        );
+
+        return response()->json([
+            'message' => 'Clasificacion aprobada y bloqueada como manual.',
+            'data' => $site->fresh(),
+        ]);
     }
 }

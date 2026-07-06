@@ -17,6 +17,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Monitoring\Events\TechnologyStackChanged;
+use Modules\Monitoring\Events\TechnologyChanged;
 use Modules\Monitoring\Services\MonitoringHttpClientFactory;
 
 final class RunTechnologyScanJob implements ShouldQueue
@@ -94,6 +95,13 @@ final class RunTechnologyScanJob implements ShouldQueue
                     $removed,
                     $detected,
                     now()->toIso8601String(),
+                );
+
+                TechnologyChanged::dispatch(
+                    siteId: (int) $site->id,
+                    added: $added,
+                    removed: $removed,
+                    detectedAt: now()->toIso8601String(),
                 );
             }
         } catch (\Throwable) {

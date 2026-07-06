@@ -48,9 +48,9 @@ final class SentinelBootstrapCommand extends Command
             return self::FAILURE;
         }
 
-        $this->components->info('Sincronizando catalogo oficial UDG...');
+        $this->components->info('Sincronizando inventario oficial UDG...');
 
-        if ($this->call('monitoring:seed-udg-sites') !== self::SUCCESS) {
+        if ($this->call('monitoring:sync-official-inventory', ['--replace' => true]) !== self::SUCCESS) {
             return self::FAILURE;
         }
 

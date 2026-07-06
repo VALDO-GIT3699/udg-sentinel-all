@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Modules\Monitoring\Services\EvaluateSiteStatusService;
 use Modules\Monitoring\Services\MonitoringHttpClientFactory;
+use Modules\Monitoring\Events\MonitoringCompleted;
 
 final class RunHeadCheckJob implements ShouldQueue
 {
@@ -56,7 +57,7 @@ final class RunHeadCheckJob implements ShouldQueue
         }
 
         $started = microtime(true);
-        $checkedAt = now()->startOfSecond();
+        $checkedAt = now();
 
         try {
             $http = $httpClientFactory->make();
@@ -91,6 +92,14 @@ final class RunHeadCheckJob implements ShouldQueue
 
             $this->recordTrafficSample($site, $latencyMs, $status, $resolvedResponse->status());
             $this->recordBrokenLinksFromSite($site, $resolvedResponse, $httpClientFactory);
+
+            MonitoringCompleted::dispatch(
+                siteId: (int) $site->id,
+                status: $status,
+                httpCode: $resolvedResponse->status(),
+                responseTimeMs: $latencyMs,
+                checkedAt: $checkedAt->toIso8601String(),
+            );
         } catch (\Throwable $exception) {
             $latencyMs = (int) round((microtime(true) - $started) * 1000);
 
@@ -118,6 +127,14 @@ final class RunHeadCheckJob implements ShouldQueue
             });
 
             $this->recordTrafficSample($site, $latencyMs, 'down', null);
+
+            MonitoringCompleted::dispatch(
+                siteId: (int) $site->id,
+                status: 'down',
+                httpCode: null,
+                responseTimeMs: $latencyMs,
+                checkedAt: $checkedAt->toIso8601String(),
+            );
         } finally {
             $lock->release();
         }
@@ -269,16 +286,6 @@ final class RunHeadCheckJob implements ShouldQueue
         ?int $responseTimeMs,
         ?string $errorMessage,
     ): void {
-        $nextSecond = $checkedAt->copy()->addSecond();
-
-        $existing = SiteCheck::query()
-            ->where('site_id', $siteId)
-            ->where('checked_at', '>=', $checkedAt)
-            ->where('checked_at', '<', $nextSecond)
-            ->where('checked_from', 'sentinel-head')
-            ->lockForUpdate()
-            ->first();
-
         $payload = [
             'site_id' => $siteId,
             'checked_at' => $checkedAt,
@@ -292,13 +299,6 @@ final class RunHeadCheckJob implements ShouldQueue
             'checked_from' => 'sentinel-head',
             'created_at' => now(),
         ];
-
-        if ($existing instanceof SiteCheck) {
-            $existing->fill($payload);
-            $existing->save();
-
-            return;
-        }
 
         SiteCheck::query()->create($payload);
     }

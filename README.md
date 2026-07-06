@@ -22,10 +22,22 @@ UDG Sentinel no es un dashboard. Es una **plataforma de observabilidad instituci
 | **Seguridad**        | Score de salud, headers HTTP, vulnerabilidades CVE, módulos Drupal          |
 | **Infraestructura**  | CPU, RAM, disco y carga por servidor                                        |
 | **Inventario**       | Catálogo maestro de sitios, dependencias y responsables                    |
+| **Asset Intelligence** | Clasificación probabilística de activos, confianza, revisión y gobierno   |
 | **Alertas**          | Reglas configurables, múltiples canales (email, Teams, Telegram, Slack)    |
 | **Reportes**         | PDF automáticos diarios/semanales/mensuales por dependencia                |
+| **Analytics**        | KPIs ejecutivos, tendencias, distribución tecnológica y salud institucional |
 | **Línea del tiempo** | Historial de eventos por sitio (caídas, renovaciones SSL, actualizaciones) |
 | **Auditoría**        | Registro completo de acciones críticas en el sistema                       |
+
+## Asset Intelligence (nuevo)
+
+- Evolución semántica: `Site` se mantiene como entidad persistida y compatible, pero se trata funcionalmente como `Asset`.
+- Clasificación automática probabilística por evidencia (DNS/HTTP/SSL/fingerprints/tecnologías/hostname).
+- Clasificación manual con bloqueo contra sobreescritura automática.
+- Historial completo de clasificaciones en `asset_classifications`.
+- Versionado del clasificador y del rule engine (`classifier_version`, `rule_engine_version`, `result_hash`).
+- Dashboard de gobierno en `/monitoring/assets/intelligence`.
+- Router de monitoreo por estrategia de `asset_type`.
 
 ---
 

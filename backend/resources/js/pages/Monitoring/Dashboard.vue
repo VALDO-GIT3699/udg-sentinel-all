@@ -30,7 +30,7 @@
           <p class="mt-3 text-4xl font-semibold text-white">{{ normalizedStatusCounts.DOWN }}</p>
         </button>
         <button type="button" class="rounded-2xl border border-amber-500/20 bg-amber-500/8 p-5 text-left transition hover:border-amber-300/50" @click="setStatusFilter('unknown')">
-          <p class="text-xs uppercase tracking-[0.18em] text-slate-300">Sin actualizar</p>
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-300">En la cola</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ normalizedStatusCounts.UNKNOWN }}</p>
         </button>
       </section>
@@ -53,7 +53,7 @@
             <p class="mt-1 text-sm text-slate-400">Un clic abre el detalle, y el dominio abre el sitio en otra pestana.</p>
           </div>
 
-          <form class="flex w-full max-w-xl flex-col gap-3 sm:flex-row" @submit.prevent="applySearch">
+          <form class="flex w-full flex-col gap-3" @submit.prevent="applySearch">
             <label class="sr-only" for="dashboard-search">Buscar sitio o dominio</label>
             <input
               id="dashboard-search"
@@ -67,7 +67,21 @@
             <datalist id="monitoring-site-suggestions">
               <option v-for="suggestion in suggestions" :key="suggestion" :value="suggestion" />
             </datalist>
-            <div class="flex gap-2">
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="h-11 rounded-xl border border-sky-500/50 px-4 text-sm font-semibold text-sky-200 transition hover:border-sky-300"
+                @click="showAllSites"
+              >
+                Ver todos
+              </button>
+              <button
+                type="button"
+                class="h-11 rounded-xl border border-emerald-500/50 px-4 text-sm font-semibold text-emerald-200 transition hover:border-emerald-300"
+                @click="showRegisterForm = !showRegisterForm"
+              >
+                {{ showRegisterForm ? 'Cerrar alta manual' : 'Registrar nuevo sitio .udg.mx' }}
+              </button>
               <button
                 type="button"
                 class="h-11 rounded-xl border border-amber-500/50 px-4 text-sm font-semibold text-amber-200 transition hover:border-amber-300"
@@ -91,6 +105,41 @@
               </button>
             </div>
           </form>
+
+          <form v-if="showRegisterForm" class="mt-4 grid w-full gap-3 border-t border-slate-800 pt-4 lg:grid-cols-4" @submit.prevent="registerSite">
+            <input
+              v-model="registerName"
+              type="text"
+              placeholder="Nombre del sitio"
+              class="h-11 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+            />
+            <input
+              v-model="registerDomain"
+              type="text"
+              placeholder="subdominio.udg.mx"
+              class="h-11 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+            />
+            <input
+              v-model="registerEntity"
+              type="text"
+              placeholder="Entidad (opcional)"
+              class="h-11 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+            />
+            <button
+              type="submit"
+              class="h-11 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-50"
+              :disabled="isRegisteringSite"
+            >
+              {{ isRegisteringSite ? 'Registrando...' : 'Guardar y monitorear' }}
+            </button>
+            <textarea
+              v-model="registerNotes"
+              rows="2"
+              placeholder="Notas (opcional)"
+              class="lg:col-span-4 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+            />
+          </form>
+
         </header>
 
         <div class="overflow-x-auto">
@@ -99,9 +148,12 @@
               <tr class="text-slate-400">
                 <th class="px-4 py-4 font-medium">Sitio</th>
                 <th class="px-4 py-4 font-medium">Dominio</th>
+                <th class="px-4 py-4 font-medium">CMS</th>
+                <th class="px-4 py-4 font-medium">IP servidor</th>
+                <th class="px-4 py-4 font-medium">Certificado</th>
                 <th class="px-4 py-4 font-medium">Estado operativo</th>
-                <th class="px-4 py-4 font-medium">Diagnostico actual</th>
-                <th class="px-4 py-4 font-medium">Detalle tecnico</th>
+                <th class="px-4 py-4 font-medium">Estatus proyecto</th>
+                <th class="px-4 py-4 font-medium">Comentarios</th>
                 <th class="px-4 py-4 font-medium">Último check</th>
                 <th class="px-4 py-4 font-medium">Acciones</th>
               </tr>
@@ -123,8 +175,15 @@
                 </td>
                 <td class="px-4 py-4 text-slate-300">
                   <a :href="safeSiteUrl(site)" target="_blank" rel="noopener noreferrer" class="text-cyan-300 hover:text-cyan-200" @click.stop>
-                    {{ fallbackDomain(site.domain) }}
+                    {{ displayDomain(site) }}
                   </a>
+                </td>
+                <td class="px-4 py-4 text-slate-300">{{ labelize(site.cms || 'Sin dato') }}</td>
+                <td class="px-4 py-4 text-slate-300">{{ site.server_ip || 'Externo' }}</td>
+                <td class="px-4 py-4 text-slate-300">
+                  <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="site.certificate_present ? 'bg-emerald-500/15 text-emerald-200' : 'bg-slate-700 text-slate-300'">
+                    {{ site.certificate_label || 'No' }}
+                  </span>
                 </td>
                 <td class="px-4 py-4">
                   <div class="flex flex-wrap items-center gap-2">
@@ -140,8 +199,8 @@
                     </span>
                   </div>
                 </td>
-                <td class="px-4 py-4 text-slate-300">{{ site.diagnostic_label || '-' }}</td>
-                <td class="px-4 py-4 text-slate-300">{{ site.diagnostic_reason || '-' }}</td>
+                <td class="px-4 py-4 text-slate-300">{{ site.project_status || '-' }}</td>
+                <td class="px-4 py-4 text-slate-300">{{ site.comments || '-' }}</td>
                 <td class="px-4 py-4 text-slate-400">{{ formatCheckTime(site.last_checked_at, resolveStatusCode(site)) }}</td>
                 <td class="px-4 py-4" @click.stop>
                   <button type="button" class="rounded-lg border border-cyan-600/60 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:border-cyan-400" @click="scanSingleSite(site.id)">
@@ -150,8 +209,11 @@
                 </td>
               </tr>
               <tr v-if="normalizedSites.length === 0">
-                <td colspan="7" class="px-4 py-12 text-center text-sm text-slate-400">
-                  No hay sitios que coincidan con la búsqueda actual.
+                <td :colspan="10" class="px-4 py-12 text-center text-sm text-slate-400">
+                  <p>No hay sitios que coincidan con la búsqueda actual.</p>
+                  <button type="button" class="mt-3 rounded-lg border border-sky-500/40 px-3 py-1.5 text-xs font-semibold text-sky-200" @click="showAllSites">
+                    Mostrar todos los sitios
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -194,7 +256,7 @@ import { router } from '@inertiajs/vue3'
 import type { ApexOptions } from 'apexcharts'
 import VueApexCharts from 'vue3-apexcharts'
 
-const DEFAULT_REFRESH_INTERVAL_MS = 5000
+const DEFAULT_REFRESH_INTERVAL_MS = 15000
 const DEFAULT_PER_PAGE = 50
 
 type StatusCounts = {
@@ -211,6 +273,12 @@ type SiteItem = {
   name: string | null
   domain: string | null
   url?: string | null
+  cms?: string
+  server_ip?: string
+  certificate_present?: boolean
+  certificate_label?: string
+  project_status?: string
+  comments?: string
   current_status: string
   current_status_code?: string
   display_status_code?: string
@@ -244,6 +312,13 @@ type DashboardProps = {
 }
 
 const props = defineProps<DashboardProps>()
+
+const showRegisterForm = ref(false)
+const registerName = ref('')
+const registerDomain = ref('')
+const registerEntity = ref('')
+const registerNotes = ref('')
+const isRegisteringSite = ref(false)
 
 const localSearch = ref(props.filters?.search ?? '')
 const localStatus = ref((props.filters?.status ?? 'all').toString())
@@ -293,8 +368,19 @@ const formattedUpdatedAt = computed(() => {
   }
 
   const parsed = new Date(props.updatedAt)
-  return Number.isNaN(parsed.getTime()) ? 'Sin dato' : parsed.toLocaleString('es-MX')
+  return Number.isNaN(parsed.getTime()) ? 'Sin dato' : formatDateTimeDdMmYyyy(parsed)
 })
+
+const formatDateTimeDdMmYyyy = (date: Date) => {
+  const dd = String(date.getDate()).padStart(2, '0')
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const yyyy = String(date.getFullYear())
+  const hh = String(date.getHours()).padStart(2, '0')
+  const min = String(date.getMinutes()).padStart(2, '0')
+  const ss = String(date.getSeconds()).padStart(2, '0')
+
+  return `${dd}-${mm}-${yyyy} ${hh}:${min}:${ss}`
+}
 
 const resolveStatusCode = (site: SiteItem): 'up' | 'down' | 'degraded' | 'unknown' => {
   const diagnosisBucket = (site.diagnostic_bucket ?? '').toString().trim().toLowerCase()
@@ -330,12 +416,64 @@ const statusLabel = (status: ReturnType<typeof resolveStatusCode>) => {
   if (status === 'up') return 'OPERATIVO'
   if (status === 'degraded') return 'CON INCIDENCIAS'
   if (status === 'down') return 'NO RESPONDE'
-  return 'SIN ACTUALIZAR'
+  return 'EN LA COLA'
+}
+
+const labelize = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+
+const registerSite = () => {
+  if (isRegisteringSite.value) {
+    return
+  }
+
+  if (registerName.value.trim() === '' || registerDomain.value.trim() === '') {
+    actionMessage.value = 'Nombre y dominio son obligatorios para registrar un nuevo sitio.'
+    return
+  }
+
+  isRegisteringSite.value = true
+
+  router.post('/monitoring/dashboard/register-site', {
+    name: registerName.value.trim(),
+    domain: registerDomain.value.trim().toLowerCase(),
+    entity: registerEntity.value.trim() || null,
+    notes: registerNotes.value.trim() || null,
+  }, {
+    preserveScroll: true,
+    onFinish: () => {
+      isRegisteringSite.value = false
+    },
+    onSuccess: () => {
+      showRegisterForm.value = false
+      registerName.value = ''
+      registerDomain.value = ''
+      registerEntity.value = ''
+      registerNotes.value = ''
+      actionMessage.value = 'Sitio registrado correctamente y agregado al monitoreo.'
+    },
+  })
 }
 
 const fallbackSiteName = (site: SiteItem) => site.name?.trim() || site.domain?.trim() || `Sitio #${site.id}`
 
 const fallbackDomain = (domain: string | null) => domain?.trim() || 'Sin dominio'
+
+const displayDomain = (site: SiteItem) => {
+  const domain = (site.domain ?? '').trim()
+  const isIpDomain = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(domain)
+
+  if (isIpDomain) {
+    const url = (site.url ?? '').trim()
+    return url !== '' ? url.replace(/^https?:\/\//i, '') : domain
+  }
+
+  if (domain !== '') {
+    return domain
+  }
+
+  const url = (site.url ?? '').trim()
+  return url !== '' ? url.replace(/^https?:\/\//i, '') : 'Sin dominio'
+}
 
 const safeSiteUrl = (site: SiteItem) => {
   const candidate = site.url?.trim() || (site.domain ? `https://${site.domain}` : '')
@@ -364,8 +502,22 @@ const buildDashboardQuery = (page = 1) => {
 }
 
 const setStatusFilter = (status: 'up' | 'degraded' | 'down' | 'unknown') => {
-  localStatus.value = status
+  localStatus.value = localStatus.value === status ? 'all' : status
   router.get('/monitoring/dashboard', buildDashboardQuery(1), {
+    preserveState: true,
+    preserveScroll: true,
+    replace: true,
+  })
+}
+
+const showAllSites = () => {
+  localSearch.value = ''
+  localStatus.value = 'all'
+
+  router.get('/monitoring/dashboard', {
+    page: 1,
+    per_page: currentPerPage.value || DEFAULT_PER_PAGE,
+  }, {
     preserveState: true,
     preserveScroll: true,
     replace: true,
@@ -445,7 +597,7 @@ const scanAllSites = () => {
   router.post('/monitoring/dashboard/scan-all', {}, {
     preserveScroll: true,
     onSuccess: () => {
-      actionMessage.value = 'Actualizacion masiva programada. El sistema actualizara resultados por lotes para evitar caidas.'
+      actionMessage.value = 'Actualizacion masiva programada. El escaneo general se ejecuta cada hora para evitar saturacion.'
       isMassScanRunning.value = false
       refreshDashboard()
     },
@@ -465,7 +617,7 @@ const formatCheckTime = (value: string | null, status: ReturnType<typeof resolve
   }
 
   const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? 'Nunca' : parsed.toLocaleString('es-MX')
+  return Number.isNaN(parsed.getTime()) ? 'Nunca' : formatDateTimeDdMmYyyy(parsed)
 }
 
 const statusPieSeries = computed(() => [
@@ -476,7 +628,7 @@ const statusPieSeries = computed(() => [
 ])
 
 const statusPieOptions = computed<ApexOptions>(() => ({
-  labels: ['Operativos', 'Con incidencias', 'No responde', 'Sin actualizar'],
+  labels: ['Operativos', 'Con incidencias', 'No responde', 'En la cola'],
   legend: {
     position: 'bottom',
     labels: { colors: '#CBD5E1' },
@@ -506,10 +658,23 @@ const diagnosticBarOptions = computed<ApexOptions>(() => ({
     type: 'bar',
     toolbar: { show: false },
     foreColor: '#CBD5E1',
+    events: {
+      dataPointSelection: (_event: unknown, _chartContext: unknown, config: { dataPointIndex?: number }) => {
+        const bucketByIndex = ['operativo', 'respuesta_lenta', 'responde_con_errores', 'inestable', 'no_responde', 'sin_actualizar']
+        const index = config?.dataPointIndex ?? -1
+        const bucket = bucketByIndex[index]
+
+        if (!bucket) {
+          return
+        }
+
+        router.visit(`/monitoring/diagnostic/${bucket}`)
+      },
+    },
   },
   colors: ['#06B6D4'],
   xaxis: {
-    categories: ['Operativos', 'Respuesta lenta', 'Con errores', 'Inestables', 'No responde', 'Sin actualizar'],
+    categories: ['Operativos', 'Respuesta lenta', 'Con errores', 'Inestables', 'No responde', 'En la cola'],
     labels: { style: { colors: '#CBD5E1' } },
   },
   yaxis: {
@@ -549,6 +714,10 @@ watch(localSearch, (value, previousValue) => {
 })
 
 onMounted(() => {
+  if (localStatus.value !== 'all' && normalizedSites.value.length === 0) {
+    showAllSites()
+  }
+
   pollingInterval = setInterval(refreshDashboard, props.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS)
 
   const w = window as Window & {

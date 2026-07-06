@@ -54,4 +54,6 @@ interface SiteRepositoryInterface
     public function dueForSecurityHeaderScan(int $limit = 100): Collection;
 
     public function dueForTechnologyScan(int $limit = 100): Collection;
+
+    public function dueForAssetClassification(int $limit = 100): Collection;
 }

@@ -11,6 +11,78 @@
 
 UDG Sentinel es una **plataforma de observabilidad empresarial** construida sobre principios de arquitectura limpia, separación de responsabilidades y escalabilidad horizontal. Su propósito es centralizar el monitoreo, análisis de seguridad e inventario técnico de los más de 200 sitios web bajo el dominio `udg.mx`.
 
+### 1.2 Evolución Asset Intelligence (2026-07)
+
+- El modelo persistido `sites` se conserva por compatibilidad histórica, pero semánticamente se trata como activo digital (`Asset`).
+- Se agregó una capa de compatibilidad de esquema (`AssetIntelligenceSchema`) para despliegues incrementales.
+- Ningún módulo debe lanzar 500 cuando las columnas de Asset Intelligence aún no existen.
+- Monitoreo inteligente por `Strategy Pattern` con `AssetMonitoringStrategyRouter`.
+- Clasificador con `Rule Engine` desacoplado, versionado (`classifier_version`, `rule_engine_version`) y hash de resultado (`result_hash`).
+
+---
+
+## 1.3 Architecture Review Empresarial (2026-07-03)
+
+### Hallazgos
+- Fortaleza: modularidad base consistente con `nwidart`, repositorios y servicios desacoplados en dominios principales.
+- Brecha cerrada: se incorpora `Analytics` como bounded context explicito (antes, analitica dispersa en controladores).
+- Brecha cerrada: eventos de dominio ampliados para trazabilidad de ciclo de vida (`MonitoringCompleted`, `AvailabilityChanged`, `CertificateExpiring`, `TechnologyChanged`, `AlertTriggered`, `AlertResolved`, `AssetReclassified`, `ClassificationOverridden`).
+- Riesgo residual: `Reports` conserva partes scaffold y requiere pipeline de exportacion robusto para cargas altas.
+- Riesgo residual: faltan projections materializadas para analitica de muy alta cardinalidad (actualmente consultas directas en tiempo real).
+
+### Decisiones arquitectonicas
+- Se mantiene compatibilidad total con `sites` como agregado persistido canonico.
+- Se consolida Asset Intelligence como capacidad transversal sin romper contratos legacy.
+- Se refuerza Open/Closed en monitoreo por estrategias, permitiendo nuevos tipos de activo sin modificar estrategias existentes.
+
+---
+
+## 1.4 Bounded Contexts
+
+- `Inventory`: catalogo de activos y metadatos maestros.
+- `Monitoring`: disponibilidad, telemetria operativa y estado en tiempo real.
+- `Classification`: motor de inferencia y override manual.
+- `Analytics`: KPIs institucionales, distribuciones, tendencias y calidad del clasificador.
+- `Alerting`: reglas, ciclo de vida de alertas e incidentes.
+- `Reporting`: generacion y distribucion de reportes ejecutivos/tecnicos.
+- `Authentication`: identidad, autorizacion y permisos.
+- `Notifications`: envio multicanal y tracking de entregas.
+- `Scheduling`: orquestacion de comandos y jobs periodicos.
+- `Audit`: trazabilidad de acciones y cambios de estado.
+
+Separacion recomendada: `Classification` se mantiene dentro de `Inventory` a nivel fisico por compatibilidad, pero se trata como subdominio explicito a nivel de modelo.
+
+---
+
+## 1.5 Modelo de Dominio (resumen)
+
+### Entidades y Agregados
+- Aggregate `Site` (Asset): raiz operativa con estado, criticidad y clasificacion vigente.
+- Entity `AssetClassification`: historial versionado de decisiones de clasificacion.
+- Entity `SiteCheck`: observaciones de disponibilidad y latencia.
+- Entity `Alert`: incidente/alerta con ciclo de vida abierto-ack-resuelto.
+- Entity `SslCertificate`, `SiteTechnology`, `SecurityScore` como evidencias especializadas.
+
+### Value Objects (conceptuales actuales)
+- `AssetFingerprint`, `AssetClassificationResult`, nivel de severidad, estado operativo y ventana temporal.
+
+### Domain Services
+- `AssetClassificationService`, `AssetClassificationEngine`, `EvaluateSiteStatusService`, `AnalyticsService`.
+
+### Repositories
+- `SiteRepositoryInterface`, `AssetClassificationRepositoryInterface`, `AlertRepositoryInterface`, `SiteCheckRepositoryInterface`.
+
+### Policies / Specifications
+- Politica de lock de clasificacion manual.
+- Especificaciones por estrategia de monitoreo (`supports(assetType)`).
+- Esquema disponible/no disponible con `AssetIntelligenceSchema`.
+
+### Domain Events clave
+- `AssetClassified`, `AssetReclassified`, `ClassificationOverridden`.
+- `MonitoringCompleted`, `AvailabilityChanged`, `SiteStatusChanged`.
+- `TechnologyChanged`, `CertificateExpiring`.
+- `AlertTriggered`, `AlertResolved`.
+
 ### 1.1 Principios arquitectónicos
 
 | Principio              | Descripción                                                                 |

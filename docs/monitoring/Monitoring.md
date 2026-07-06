@@ -6,13 +6,13 @@ Esta guia define el arranque local del pipeline de monitoreo para verificar upti
 ## Requisitos Previos
 - PHP y Composer instalados.
 - Node.js y npm instalados.
-- MySQL disponible con base de datos `udg_sentinel`.
+- PostgreSQL disponible con base de datos `udg_sentinel`.
 - Redis disponible para colas y cache.
 
 ## Variables Minimas
 Configurar en `.env` (basado en `.env.example`):
-- `DB_CONNECTION=mysql`
-- `DB_HOST`, `DB_PORT=3306`, `DB_DATABASE=udg_sentinel`, `DB_USERNAME`, `DB_PASSWORD`
+- `DB_CONNECTION=pgsql`
+- `DB_HOST`, `DB_PORT=5432`, `DB_DATABASE=udg_sentinel`, `DB_USERNAME`, `DB_PASSWORD`
 - `QUEUE_CONNECTION=redis`
 - `REDIS_HOST`, `REDIS_PORT`
 - `HORIZON_ENABLED=true`
@@ -21,6 +21,8 @@ Configurar en `.env` (basado en `.env.example`):
 - `SENTINEL_QUEUE_TECH=monitoring-tech`
 - `SENTINEL_QUEUE_HEADERS=monitoring-headers`
 - `SENTINEL_QUEUE_ALERTS=monitoring-alerts`
+- `SENTINEL_QUEUE_ASSET_CLASSIFICATION=inventory-asset-classification`
+- `SENTINEL_ASSET_MONITOR_ROUTER=true`
 
 ## Arranque Backend
 1. Instalar dependencias:
@@ -43,6 +45,22 @@ Levantar en terminales separadas:
 4. Frontend:
 	- `npm run dev`
 
+## Monitoreo por estrategias (Asset Router)
+- Comando principal: `php artisan monitoring:dispatch-asset-monitoring --limit=200`
+- Estrategias actuales:
+	- `website` / `web_application` -> uptime + headers + ssl + tech
+	- `rest_api` / `graphql` / `soap_api` -> uptime + api contract + ssl
+	- `mail_server` -> sondeo MX
+- Fallback automático a estrategia website cuando no hay clasificación disponible.
+
+## Centro de Operaciones y Analitica
+- Dashboard operativo: `/monitoring/dashboard`
+- Gobierno de activos: `/monitoring/assets/intelligence`
+- Centro analitico ejecutivo: `/analytics/overview`
+- Aprobacion rapida de clasificacion:
+	- `POST /monitoring/sites/{site}/classification/approve`
+	- Convierte clasificacion sugerida actual en manual bloqueada.
+
 ## Verificacion Rapida
 1. Confirmar que Horizon muestra workers activos.
 2. Crear o habilitar al menos un sitio oficial monitoreado.
@@ -53,8 +71,8 @@ Levantar en terminales separadas:
 - Si no se procesan jobs:
   - Verificar `QUEUE_CONNECTION=redis` y conectividad a Redis.
   - Confirmar nombre de colas y worker escuchando esas colas.
-- Si falla MySQL:
-  - Revisar credenciales y existencia de `udg_sentinel`.
+- Si falla PostgreSQL:
+	- Revisar credenciales y existencia de `udg_sentinel`.
   - Ejecutar `php artisan config:clear` despues de cambios en `.env`.
 - Si no actualiza el dashboard:
   - Confirmar que los eventos se emiten y que el canal en vivo esta configurado.

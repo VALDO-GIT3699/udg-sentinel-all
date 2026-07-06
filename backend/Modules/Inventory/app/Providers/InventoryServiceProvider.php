@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Providers;
 
+use Modules\Inventory\Console\Commands\DispatchAssetClassificationsCommand;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 
@@ -22,7 +23,9 @@ class InventoryServiceProvider extends ModuleServiceProvider
      *
      * @var string[]
      */
-    // protected array $commands = [];
+    protected array $commands = [
+        DispatchAssetClassificationsCommand::class,
+    ];
 
     /**
      * Provider classes to register.
@@ -36,11 +39,15 @@ class InventoryServiceProvider extends ModuleServiceProvider
 
     /**
      * Define module schedules.
-     * 
+     *
      * @param $schedule
      */
-    // protected function configureSchedules(Schedule $schedule): void
-    // {
-    //     $schedule->command('inspire')->hourly();
-    // }
+    protected function configureSchedules(Schedule $schedule): void
+    {
+        $schedule
+            ->command('inventory:dispatch-asset-classifications --limit=250')
+            ->hourly()
+            ->withoutOverlapping()
+            ->runInBackground();
+    }
 }

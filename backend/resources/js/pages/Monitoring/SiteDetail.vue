@@ -32,18 +32,97 @@
         </article>
       </section>
 
-      <section class="mt-7 grid gap-4 md:grid-cols-3">
+      <section class="mt-6 rounded-3xl border border-amber-500/30 bg-amber-500/10 p-5">
+        <h2 class="text-lg font-semibold text-white">Motivo de estado actual</h2>
+        <p class="mt-2 text-sm text-amber-100">
+          {{ currentDiagnosis.label }}: {{ currentDiagnosis.reason }}
+        </p>
+      </section>
+
+      <section class="mt-6 rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+        <header class="mb-4">
+          <h2 class="text-lg font-semibold text-white">Notas y seguimiento</h2>
+          <p class="mt-1 text-sm text-slate-400">Registra avances operativos y marca cada nota en curso o resuelta.</p>
+        </header>
+
+        <form class="grid gap-3 md:grid-cols-3" @submit.prevent="createNote">
+          <label class="md:col-span-2 flex flex-col gap-2 text-sm text-slate-300">
+            Nota
+            <textarea
+              v-model="newNote"
+              rows="3"
+              class="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
+              placeholder="Describe el incidente, avance o accion aplicada"
+            />
+          </label>
+
+          <div class="flex flex-col gap-3">
+            <label class="flex flex-col gap-2 text-sm text-slate-300">
+              Estado
+              <select v-model="newNoteStatus" class="h-11 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none">
+                <option value="en_curso">En curso</option>
+                <option value="resuelta">Resuelta</option>
+              </select>
+            </label>
+
+            <button
+              type="submit"
+              class="h-11 rounded-xl bg-cyan-400 px-5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50"
+              :disabled="isSavingNote || newNote.trim().length === 0"
+            >
+              {{ isSavingNote ? 'Guardando...' : 'Agregar nota' }}
+            </button>
+          </div>
+        </form>
+
+        <ul class="mt-5 space-y-3">
+          <li
+            v-for="note in safeNotesTimeline"
+            :key="note.id"
+            class="rounded-xl border border-slate-700 bg-slate-900 p-4"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-white">{{ note.title || 'Nota operativa' }}</p>
+                <p class="mt-1 text-xs text-slate-400">{{ formatDate(note.created_at) }}</p>
+              </div>
+              <span
+                class="rounded-full px-3 py-1 text-xs font-semibold"
+                :class="note.status === 'resuelta' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-200'"
+              >
+                {{ note.status === 'resuelta' ? 'Resuelta' : 'En curso' }}
+              </span>
+            </div>
+            <p class="mt-3 text-sm text-slate-200">{{ note.note }}</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/20"
+                :disabled="note.status === 'en_curso' || isUpdatingNoteId === note.id"
+                @click="updateNoteStatus(note.id, 'en_curso')"
+              >
+                Marcar en curso
+              </button>
+              <button
+                type="button"
+                class="rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/20"
+                :disabled="note.status === 'resuelta' || isUpdatingNoteId === note.id"
+                @click="updateNoteStatus(note.id, 'resuelta')"
+              >
+                Marcar resuelta
+              </button>
+            </div>
+          </li>
+          <li v-if="safeNotesTimeline.length === 0" class="rounded-xl border border-slate-700 bg-slate-900 p-4 text-sm text-slate-400">
+            Aun no hay notas registradas para este sitio.
+          </li>
+        </ul>
+      </section>
+
+      <section class="mt-7 grid gap-4 md:grid-cols-1">
         <article class="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
           <p class="text-xs uppercase tracking-[0.18em] text-emerald-300">Mediciones activas</p>
           <p class="mt-2 text-3xl font-semibold text-white">{{ statusBreakdown24h.up ?? 0 }}</p>
-        </article>
-        <article class="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-amber-300">Mediciones degradadas</p>
-          <p class="mt-2 text-3xl font-semibold text-white">{{ statusBreakdown24h.degraded ?? 0 }}</p>
-        </article>
-        <article class="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-rose-300">Mediciones caidas</p>
-          <p class="mt-2 text-3xl font-semibold text-white">{{ statusBreakdown24h.down ?? 0 }}</p>
         </article>
       </section>
 
@@ -212,7 +291,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { router } from '@inertiajs/vue3'
 import type { ApexOptions } from 'apexcharts'
 import VueApexCharts from 'vue3-apexcharts'
 
@@ -258,8 +338,25 @@ type AlertItem = {
   id: number
 }
 
+type Diagnosis = {
+  bucket: string
+  label: string
+  reason: string
+}
+
+type NoteItem = {
+  id: number
+  title: string
+  note: string
+  status: 'en_curso' | 'resuelta'
+  created_at: string | null
+  resolved_at: string | null
+}
+
 const props = defineProps<{
   site: SiteDetail
+  currentDiagnosis: Diagnosis
+  notesTimeline: NoteItem[]
   timeline: TimelinePoint[]
   statusBreakdown24h: Record<string, number>
   uptime24h: number
@@ -271,6 +368,13 @@ const props = defineProps<{
   securityHeaders: SecurityHeaderPoint[]
   updatedAt: string
 }>()
+
+const currentDiagnosis = computed(() => props.currentDiagnosis ?? { bucket: 'en_cola', label: 'En la cola', reason: 'Pendiente de mediciones.' })
+const safeNotesTimeline = computed(() => Array.isArray(props.notesTimeline) ? props.notesTimeline : [])
+const newNote = ref('')
+const newNoteStatus = ref<'en_curso' | 'resuelta'>('en_curso')
+const isSavingNote = ref(false)
+const isUpdatingNoteId = ref<number | null>(null)
 
 const safeTimeline = computed(() => Array.isArray(props.timeline) ? props.timeline : [])
 const safeTraffic24h = computed(() => Array.isArray(props.trafficSeries24h) ? props.trafficSeries24h : [])
@@ -439,12 +543,62 @@ const statusTextClass = (status: SiteDetail['current_status']) => {
   return 'text-slate-300'
 }
 
+const formatDateTimeDdMmYyyy = (date: Date) => {
+  const dd = String(date.getDate()).padStart(2, '0')
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const yyyy = String(date.getFullYear())
+  const hh = String(date.getHours()).padStart(2, '0')
+  const min = String(date.getMinutes()).padStart(2, '0')
+  const ss = String(date.getSeconds()).padStart(2, '0')
+
+  return `${dd}-${mm}-${yyyy} ${hh}:${min}:${ss}`
+}
+
 const formatDate = (value: string | null) => {
   if (!value) {
     return 'Sin datos'
   }
 
   const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? 'Sin datos' : parsed.toLocaleString('es-MX')
+  return Number.isNaN(parsed.getTime()) ? 'Sin datos' : formatDateTimeDdMmYyyy(parsed)
+}
+
+const createNote = () => {
+  if (isSavingNote.value || newNote.value.trim() === '') {
+    return
+  }
+
+  isSavingNote.value = true
+
+  router.post(`/monitoring/sites/${props.site.id}/notes`, {
+    note: newNote.value.trim(),
+    status: newNoteStatus.value,
+  }, {
+    preserveScroll: true,
+    onFinish: () => {
+      isSavingNote.value = false
+    },
+    onSuccess: () => {
+      newNote.value = ''
+      newNoteStatus.value = 'en_curso'
+    },
+  })
+}
+
+const updateNoteStatus = (eventId: number, status: 'en_curso' | 'resuelta') => {
+  if (isUpdatingNoteId.value !== null) {
+    return
+  }
+
+  isUpdatingNoteId.value = eventId
+
+  router.patch(`/monitoring/sites/${props.site.id}/notes/${eventId}`, {
+    status,
+  }, {
+    preserveScroll: true,
+    onFinish: () => {
+      isUpdatingNoteId.value = null
+    },
+  })
 }
 </script>

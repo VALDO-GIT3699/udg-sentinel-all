@@ -7,10 +7,14 @@ namespace Modules\Monitoring\Http\Controllers;
 use App\Contracts\Repositories\AlertRepositoryInterface;
 use App\Contracts\Repositories\SiteRepositoryInterface;
 use App\Models\Site;
+use App\Models\SiteCheck;
+use App\Models\SiteEvent;
 use App\Models\TrafficMetric;
 use App\Repositories\EloquentSiteCheckRepository;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -22,6 +26,60 @@ final class SiteDetailController extends Controller
         private readonly EloquentSiteCheckRepository $siteCheckRepository,
         private readonly AlertRepositoryInterface $alertRepository,
     ) {
+    }
+
+    public function addNote(Request $request, int $siteId): RedirectResponse
+    {
+        $site = $this->siteRepository->findById($siteId);
+        abort_if(! $site instanceof Site, 404);
+
+        $validated = $request->validate([
+            'note' => ['required', 'string', 'max:3000'],
+            'status' => ['required', 'in:en_curso,resuelta'],
+        ]);
+
+        SiteEvent::record(
+            siteId: (int) $site->id,
+            eventType: 'monitoring.note',
+            title: 'Nota operativa',
+            severity: 'info',
+            description: trim((string) $validated['note']),
+            metadata: [
+                'note_status' => (string) $validated['status'],
+            ],
+            createdBy: $request->user()?->id,
+            occurredAt: now(),
+        );
+
+        return back()->with('success', 'Nota agregada al timeline del sitio.');
+    }
+
+    public function updateNoteStatus(Request $request, int $siteId, int $eventId): RedirectResponse
+    {
+        $site = $this->siteRepository->findById($siteId);
+        abort_if(! $site instanceof Site, 404);
+
+        $validated = $request->validate([
+            'status' => ['required', 'in:en_curso,resuelta'],
+        ]);
+
+        $noteEvent = SiteEvent::query()
+            ->where('site_id', $site->id)
+            ->where('event_type', 'monitoring.note')
+            ->whereKey($eventId)
+            ->firstOrFail();
+
+        $metadata = is_array($noteEvent->metadata) ? $noteEvent->metadata : [];
+        $metadata['note_status'] = (string) $validated['status'];
+        $metadata['updated_at'] = now()->toIso8601String();
+        if ($validated['status'] === 'resuelta') {
+            $metadata['resolved_at'] = now()->toIso8601String();
+        }
+
+        $noteEvent->metadata = $metadata;
+        $noteEvent->save();
+
+        return back()->with('success', 'Estado de nota actualizado.');
     }
 
     public function show(int $siteId): Response
@@ -89,8 +147,33 @@ final class SiteDetailController extends Controller
             ->values()
             ->all();
 
+        $diagnosis = $this->resolveSiteDiagnosis($site, strtolower((string) ($site->current_status ?? 'unknown')), $site->latestCheck);
+
+        $notesTimeline = SiteEvent::query()
+            ->where('site_id', $site->id)
+            ->where('event_type', 'monitoring.note')
+            ->orderByDesc('occurred_at')
+            ->limit(300)
+            ->get()
+            ->map(static function (SiteEvent $event): array {
+                $metadata = is_array($event->metadata) ? $event->metadata : [];
+
+                return [
+                    'id' => (int) $event->id,
+                    'title' => (string) $event->title,
+                    'note' => (string) ($event->description ?? ''),
+                    'status' => (string) ($metadata['note_status'] ?? 'en_curso'),
+                    'created_at' => optional($event->occurred_at)?->toIso8601String(),
+                    'resolved_at' => isset($metadata['resolved_at']) ? (string) $metadata['resolved_at'] : null,
+                ];
+            })
+            ->values()
+            ->all();
+
         return [
             'site' => $site,
+            'currentDiagnosis' => $diagnosis,
+            'notesTimeline' => $notesTimeline,
             'timeline' => $checksTimeline,
             'statusBreakdown24h' => $statusBreakdown24h,
             'uptime24h' => $this->siteCheckRepository->uptimePercentage((int) $site->id, 24),
@@ -173,6 +256,89 @@ final class SiteDetailController extends Controller
             'down' => (int) ($breakdown['down'] ?? 0),
             'degraded' => (int) ($breakdown['degraded'] ?? 0),
             'timeout' => (int) ($breakdown['timeout'] ?? 0),
+        ];
+    }
+
+    /**
+     * @return array{bucket: string, label: string, reason: string}
+     */
+    private function resolveSiteDiagnosis(Site $site, string $status, ?SiteCheck $latestCheck): array
+    {
+        $errorMessage = trim((string) ($latestCheck?->error_message ?? ''));
+        $httpCode = $latestCheck?->http_code;
+        $responseTimeMs = $latestCheck?->response_time_ms;
+        $normalizedError = mb_strtolower($errorMessage);
+
+        $checkInterval = max(1, (int) ($site->check_interval_min ?? 5));
+        $staleMinutes = max(3, $checkInterval * 3);
+        $lastCheckedAt = $site->last_checked_at;
+
+        if ($lastCheckedAt === null || $lastCheckedAt->lt(now()->subMinutes($staleMinutes))) {
+            return [
+                'bucket' => 'en_cola',
+                'label' => 'En la cola',
+                'reason' => 'Aun no hay una medicion reciente para este sitio.',
+            ];
+        }
+
+        if ($status === 'up') {
+            return [
+                'bucket' => 'operativo',
+                'label' => 'Operativo',
+                'reason' => 'Respuesta estable dentro de parametros esperados.',
+            ];
+        }
+
+        $isTimeout = $normalizedError !== '' && (str_contains($normalizedError, 'timeout') || str_contains($normalizedError, 'curl error 28'));
+
+        if ($status === 'down') {
+            return [
+                'bucket' => 'no_responde',
+                'label' => 'No responde',
+                'reason' => $isTimeout
+                    ? 'El sitio excedio el tiempo maximo de respuesta.'
+                    : ($errorMessage !== ''
+                        ? $errorMessage
+                        : ($httpCode !== null ? 'El servidor devolvio HTTP ' . $httpCode . '.' : 'No se obtuvo respuesta valida.')),
+            ];
+        }
+
+        if ($status === 'degraded') {
+            if ($isTimeout) {
+                return [
+                    'bucket' => 'inestable',
+                    'label' => 'Con incidencias',
+                    'reason' => 'Presenta timeouts intermitentes.',
+                ];
+            }
+
+            if ($httpCode !== null && $httpCode >= 400) {
+                return [
+                    'bucket' => 'responde_con_errores',
+                    'label' => 'Con incidencias',
+                    'reason' => 'El sitio responde con HTTP ' . $httpCode . '.',
+                ];
+            }
+
+            if ($responseTimeMs !== null && $responseTimeMs >= 1500) {
+                return [
+                    'bucket' => 'respuesta_lenta',
+                    'label' => 'Con incidencias',
+                    'reason' => 'Tiempo de respuesta alto (' . $responseTimeMs . ' ms).',
+                ];
+            }
+
+            return [
+                'bucket' => 'inestable',
+                'label' => 'Con incidencias',
+                'reason' => $errorMessage !== '' ? $errorMessage : 'Comportamiento intermitente detectado.',
+            ];
+        }
+
+        return [
+            'bucket' => 'en_cola',
+            'label' => 'En la cola',
+            'reason' => 'Pendiente de primera ronda de telemetria.',
         ];
     }
 }

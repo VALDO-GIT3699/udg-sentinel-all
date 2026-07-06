@@ -23,6 +23,14 @@ final class Site extends Model
         'slug',
         'domain',
         'url',
+        'asset_type',
+        'asset_role',
+        'asset_confidence_pct',
+        'asset_classification_source',
+        'asset_classifier_version',
+        'asset_last_classified_at',
+        'asset_classification_locked_at',
+        'asset_classification_evidence',
         'is_active',
         'is_monitored',
         'priority',
@@ -40,8 +48,12 @@ final class Site extends Model
         'is_monitored'    => 'boolean',
         'priority'        => 'integer',
         'current_score'   => 'integer',
+        'asset_confidence_pct' => 'integer',
         'check_interval_min' => 'integer',
         'last_checked_at' => 'immutable_datetime',
+        'asset_last_classified_at' => 'immutable_datetime',
+        'asset_classification_locked_at' => 'immutable_datetime',
+        'asset_classification_evidence' => 'array',
         'tags'            => 'array',
     ];
 
@@ -121,6 +133,18 @@ final class Site extends Model
     public function latestSecurityHeader(): HasOne
     {
         return $this->hasOne(SecurityHeader::class)->latestOfMany('checked_at');
+    }
+
+    public function assetClassifications(): HasMany
+    {
+        return $this->hasMany(AssetClassification::class);
+    }
+
+    public function latestAssetClassification(): HasOne
+    {
+        return $this->hasOne(AssetClassification::class)
+            ->where('is_current', true)
+            ->latestOfMany('classified_at');
     }
 
     public function scanResults(): HasMany
