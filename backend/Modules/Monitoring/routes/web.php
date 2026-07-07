@@ -38,6 +38,10 @@ Route::middleware(['web'])->group(function () {
         ->middleware('permission:monitoring.view_dashboard')
         ->name('monitoring.dashboard.scan-all');
 
+    Route::post('monitoring/dashboard/diagnostic', [DashboardController::class, 'runDiagnostic'])
+        ->middleware('permission:monitoring.manage_settings')
+        ->name('monitoring.dashboard.diagnostic');
+
     Route::post('monitoring/dashboard/register-site', [DashboardController::class, 'registerOfficialSite'])
         ->middleware('permission:monitoring.view_dashboard')
         ->name('monitoring.dashboard.register-site');

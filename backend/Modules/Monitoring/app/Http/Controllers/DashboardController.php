@@ -14,6 +14,8 @@ use App\Models\SiteCheck;
 use App\Support\AssetIntelligenceSchema;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Request;
@@ -23,6 +25,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Str;
+use Modules\Monitoring\Support\MonitoringPermissionMatrix;
 
 final class DashboardController extends Controller
 {
@@ -31,6 +34,16 @@ final class DashboardController extends Controller
     private const DASHBOARD_MAX_PER_PAGE = 500;
 
     private const DASHBOARD_REFRESH_INTERVAL_MS = 15000;
+
+    private const MASS_SCAN_RUNNING_KEY = 'monitoring:manual-scan-all:running';
+
+    private const MASS_SCAN_COOLDOWN_UNTIL_KEY = 'monitoring:manual-scan-all:cooldown-until';
+
+    private const MASS_SCAN_LAST_TRIGGERED_AT_KEY = 'monitoring:manual-scan-all:last-triggered-at';
+
+    private const MASS_SCAN_RUNNING_MINUTES = 10;
+
+    private const MASS_SCAN_COOLDOWN_MINUTES = 30;
 
     public function __construct(
         private readonly SiteRepositoryInterface $siteRepository,
@@ -66,8 +79,137 @@ final class DashboardController extends Controller
             'searchSuggestions' => $this->searchSuggestions(),
             'pipelineMetrics' => $this->pipelineMetrics(),
             'sites' => $sites,
+            'massScanState' => $this->massScanState(),
+            'isAdmin' => $this->isAdminUser($request),
+            'diagnosticResult' => session('diagnosticResult'),
+            'diagnosticHistory' => $this->isAdminUser($request) ? $this->diagnosticHistory() : [],
             'refreshIntervalMs' => self::DASHBOARD_REFRESH_INTERVAL_MS,
             'updatedAt' => now()->toIso8601String(),
+        ]);
+    }
+
+    public function runDiagnostic(Request $request): RedirectResponse
+    {
+        $steps = [];
+        $issues = [];
+        $before = $this->queueDepthSnapshot();
+
+        try {
+            Redis::ping();
+            $steps[] = 'Conectividad con Redis validada.';
+        } catch (\Throwable) {
+            $issues[] = 'No hay conexion estable con Redis.';
+        }
+
+        $clearedKeys = [
+            self::MASS_SCAN_RUNNING_KEY,
+            'monitoring:single-site-rescan:pause',
+            'monitoring:single-site-rescan:site_id',
+        ];
+
+        foreach ($clearedKeys as $cacheKey) {
+            if (Cache::has($cacheKey)) {
+                Cache::forget($cacheKey);
+                $steps[] = sprintf('Se limpio candado operativo: %s.', $cacheKey);
+            }
+        }
+
+        try {
+            Artisan::call('queue:restart');
+            $steps[] = 'Se solicito reinicio limpio de workers de cola.';
+        } catch (\Throwable) {
+            $issues[] = 'No se pudo reiniciar workers de cola.';
+        }
+
+        try {
+            Artisan::call('horizon:terminate');
+            $steps[] = 'Se solicito reinicio controlado de Horizon para liberar bloqueos.';
+        } catch (\Throwable) {
+            $issues[] = 'No se pudo reiniciar Horizon.';
+        }
+
+        $limit = max(
+            1,
+            (int) Site::query()->where('is_active', true)->where('is_monitored', true)->count()
+        );
+
+        try {
+            Artisan::call('monitoring:dispatch-head-checks', [
+                '--limit' => $limit,
+                '--chunk' => 50,
+                '--stagger' => 0,
+            ]);
+            $steps[] = 'Se forzo un despacho inmediato de checks de disponibilidad.';
+        } catch (\Throwable) {
+            $issues[] = 'No se pudo despachar checks inmediatos de disponibilidad.';
+        }
+
+        $failedJobs = 0;
+        try {
+            $failedJobs = (int) DB::table('failed_jobs')->count();
+            if ($failedJobs > 0) {
+                $steps[] = sprintf('Se detectaron %d jobs fallidos para revision administrativa.', $failedJobs);
+            }
+        } catch (\Throwable) {
+            $issues[] = 'No se pudo consultar la tabla de jobs fallidos.';
+        }
+
+        $after = $this->queueDepthSnapshot();
+
+        $summary = sprintf(
+            'Antes: uptime %d, ssl %d, tech %d, headers %d. Ahora: uptime %d, ssl %d, tech %d, headers %d.',
+            (int) ($before['monitoring-uptime'] ?? 0),
+            (int) ($before['monitoring-ssl'] ?? 0),
+            (int) ($before['monitoring-tech'] ?? 0),
+            (int) ($before['monitoring-headers'] ?? 0),
+            (int) ($after['monitoring-uptime'] ?? 0),
+            (int) ($after['monitoring-ssl'] ?? 0),
+            (int) ($after['monitoring-tech'] ?? 0),
+            (int) ($after['monitoring-headers'] ?? 0),
+        );
+
+        if ($issues !== []) {
+            $reason = $this->buildColloquialFailureReason($issues);
+
+            $this->storeDiagnosticRun(
+                request: $request,
+                status: 'warning',
+                summary: $summary,
+                reason: $reason,
+                steps: $steps,
+                issues: $issues,
+                queueBefore: $before,
+                queueAfter: $after,
+            );
+
+            return back()->with('diagnosticResult', [
+                'type' => 'warning',
+                'summary' => $summary,
+                'steps' => $steps,
+                'reason' => $reason,
+            ]);
+        }
+
+        $reason = $failedJobs > 0
+            ? 'Se destrabo el flujo principal, pero hay jobs fallidos pendientes de revisar para cerrar la limpieza completa.'
+            : 'Diagnostico aplicado correctamente. El motor quedo destrabado y reactivado.';
+
+        $this->storeDiagnosticRun(
+            request: $request,
+            status: 'success',
+            summary: $summary,
+            reason: $reason,
+            steps: $steps,
+            issues: [],
+            queueBefore: $before,
+            queueAfter: $after,
+        );
+
+        return back()->with('diagnosticResult', [
+            'type' => 'success',
+            'summary' => $summary,
+            'steps' => $steps,
+            'reason' => $reason,
         ]);
     }
 
@@ -272,9 +414,18 @@ final class DashboardController extends Controller
 
     public function scanAll(Request $request)
     {
-        if (! Cache::add('monitoring:manual-scan-all:cooldown', now()->timestamp, 45)) {
-            return back()->with('warning', 'Ya hay una actualizacion masiva en curso. Espera unos segundos e intenta de nuevo.');
+        $cooldownUntil = (int) Cache::get(self::MASS_SCAN_COOLDOWN_UNTIL_KEY, 0);
+        if ($cooldownUntil > now()->timestamp) {
+            return back()->with('warning', 'El escaneo masivo esta temporalmente bloqueado para evitar saturacion. Espera a que termine el enfriamiento e intenta de nuevo.');
         }
+
+        if ((bool) Cache::get(self::MASS_SCAN_RUNNING_KEY, false) === true) {
+            return back()->with('warning', 'Ya hay un escaneo masivo en curso. Espera a que concluya.');
+        }
+
+        Cache::put(self::MASS_SCAN_RUNNING_KEY, true, now()->addMinutes(self::MASS_SCAN_RUNNING_MINUTES));
+        Cache::put(self::MASS_SCAN_LAST_TRIGGERED_AT_KEY, now()->toIso8601String(), now()->addMinutes(self::MASS_SCAN_COOLDOWN_MINUTES));
+        Cache::put(self::MASS_SCAN_COOLDOWN_UNTIL_KEY, now()->addMinutes(self::MASS_SCAN_COOLDOWN_MINUTES)->timestamp, now()->addMinutes(self::MASS_SCAN_COOLDOWN_MINUTES));
 
         // Solo marca sitios para que el scheduler horario procese el lote sin bloquear la UI.
         Site::query()
@@ -282,7 +433,22 @@ final class DashboardController extends Controller
             ->where('is_monitored', true)
             ->update(['last_checked_at' => null]);
 
-        return back()->with('success', 'Se marco el inventario para reescaneo. El scheduler horario y los workers lo procesaran sin bloquear la pagina.');
+        $limit = max(
+            1,
+            (int) Site::query()->where('is_active', true)->where('is_monitored', true)->count()
+        );
+
+        $batch = max(10, min(60, (int) config('monitoring.scan.default_batch_size', 40)));
+
+        app()->terminating(function () use ($limit, $batch): void {
+            try {
+                $this->dispatchMassiveScan($limit, $batch);
+            } finally {
+                Cache::forget(self::MASS_SCAN_RUNNING_KEY);
+            }
+        });
+
+        return back()->with('success', 'Reescaneo masivo iniciado. El sistema ya esta despachando los sitios en segundo plano.');
     }
 
     /**
@@ -591,6 +757,16 @@ final class DashboardController extends Controller
     private function dispatchMassiveScan(int $limit, int $batch): void
     {
         try {
+            $routerEnabled = filter_var((string) env('SENTINEL_ASSET_MONITOR_ROUTER', 'true'), FILTER_VALIDATE_BOOL);
+
+            if ($routerEnabled) {
+                Artisan::call('monitoring:dispatch-asset-monitoring', [
+                    '--limit' => $limit,
+                ]);
+
+                return;
+            }
+
             Artisan::call('monitoring:dispatch-head-checks', [
                 '--limit' => $limit,
                 '--chunk' => $batch,
@@ -680,6 +856,149 @@ final class DashboardController extends Controller
             'status' => $parts[0],
             'comments' => implode(' · ', array_slice($parts, 1)),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function massScanState(): array
+    {
+        $cooldownUntil = (int) Cache::get(self::MASS_SCAN_COOLDOWN_UNTIL_KEY, 0);
+        $isCoolingDown = $cooldownUntil > now()->timestamp;
+
+        return [
+            'isRunning' => (bool) Cache::get(self::MASS_SCAN_RUNNING_KEY, false),
+            'isCoolingDown' => $isCoolingDown,
+            'cooldownUntil' => $isCoolingDown ? now()->setTimestamp($cooldownUntil)->toIso8601String() : null,
+            'lastTriggeredAt' => Cache::get(self::MASS_SCAN_LAST_TRIGGERED_AT_KEY),
+        ];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function queueDepthSnapshot(): array
+    {
+        $snapshot = [
+            'monitoring-uptime' => 0,
+            'monitoring-ssl' => 0,
+            'monitoring-tech' => 0,
+            'monitoring-headers' => 0,
+        ];
+
+        foreach (array_keys($snapshot) as $queue) {
+            try {
+                $snapshot[$queue] = max(0, (int) Redis::llen('queues:' . $queue));
+            } catch (\Throwable) {
+                $snapshot[$queue] = 0;
+            }
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * @param array<int, string> $issues
+     */
+    private function buildColloquialFailureReason(array $issues): string
+    {
+        $base = 'Intentamos destrabarlo, pero el sistema sigue atorado por un problema de infraestructura.';
+        $detail = implode(' ', array_map(static fn (string $issue): string => ' - ' . $issue, $issues));
+
+        return trim($base . ' Detalle:' . $detail);
+    }
+
+    private function isAdminUser(Request $request): bool
+    {
+        $user = $request->user();
+
+        if ($user === null) {
+            return false;
+        }
+
+        return $user->hasRole(MonitoringPermissionMatrix::ADMIN_ROLE)
+            || $user->can('monitoring.manage_settings');
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function diagnosticHistory(): array
+    {
+        return DB::table('monitoring_diagnostic_runs as mdr')
+            ->leftJoin('users as u', 'u.id', '=', 'mdr.user_id')
+            ->select([
+                'mdr.id',
+                'mdr.status',
+                'mdr.summary',
+                'mdr.reason',
+                'mdr.steps',
+                'mdr.issues',
+                'mdr.queue_before',
+                'mdr.queue_after',
+                'mdr.created_at',
+                'u.name as user_name',
+                'u.email as user_email',
+            ])
+            ->orderByDesc('created_at')
+            ->limit(20)
+            ->get()
+            ->map(static function (object $run): array {
+                $steps = json_decode((string) ($run->steps ?? '[]'), true);
+                $issues = json_decode((string) ($run->issues ?? '[]'), true);
+                $queueBefore = json_decode((string) ($run->queue_before ?? '{}'), true);
+                $queueAfter = json_decode((string) ($run->queue_after ?? '{}'), true);
+
+                return [
+                    'id' => (int) $run->id,
+                    'status' => (string) $run->status,
+                    'summary' => (string) $run->summary,
+                    'reason' => (string) $run->reason,
+                    'steps' => is_array($steps) ? $steps : [],
+                    'issues' => is_array($issues) ? $issues : [],
+                    'queue_before' => is_array($queueBefore) ? $queueBefore : [],
+                    'queue_after' => is_array($queueAfter) ? $queueAfter : [],
+                    'created_at' => $run->created_at !== null ? Carbon::parse((string) $run->created_at)->toIso8601String() : null,
+                    'user_name' => (string) ($run->user_name ?? 'Sistema'),
+                    'user_email' => (string) ($run->user_email ?? 'sistema@local'),
+                ];
+                })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param array<int, string> $steps
+     * @param array<int, string> $issues
+     * @param array<string, int> $queueBefore
+     * @param array<string, int> $queueAfter
+     */
+    private function storeDiagnosticRun(
+        Request $request,
+        string $status,
+        string $summary,
+        string $reason,
+        array $steps,
+        array $issues,
+        array $queueBefore,
+        array $queueAfter,
+    ): void {
+        try {
+            DB::table('monitoring_diagnostic_runs')->insert([
+                'user_id' => $request->user()?->id,
+                'status' => $status,
+                'summary' => $summary,
+                'reason' => $reason,
+                'steps' => json_encode(array_values($steps), JSON_UNESCAPED_UNICODE),
+                'issues' => json_encode(array_values($issues), JSON_UNESCAPED_UNICODE),
+                'queue_before' => json_encode($queueBefore, JSON_UNESCAPED_UNICODE),
+                'queue_after' => json_encode($queueAfter, JSON_UNESCAPED_UNICODE),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Throwable) {
+            // La auditoria no debe romper el flujo operativo del diagnostico.
+        }
     }
 
 }

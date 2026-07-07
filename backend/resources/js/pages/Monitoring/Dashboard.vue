@@ -16,6 +16,76 @@
         {{ actionMessage }}
       </section>
 
+      <section
+        v-if="props.diagnosticResult"
+        class="mb-4 rounded-xl border px-4 py-3 text-sm"
+        :class="props.diagnosticResult.type === 'success' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100' : 'border-amber-500/40 bg-amber-500/10 text-amber-100'"
+      >
+        <p class="font-semibold">Diagnóstico del sistema</p>
+        <p class="mt-1">{{ props.diagnosticResult.summary }}</p>
+        <ul v-if="props.diagnosticResult.steps.length > 0" class="mt-2 list-disc pl-5">
+          <li v-for="(step, index) in props.diagnosticResult.steps" :key="`diagnostic-step-${index}`">{{ step }}</li>
+        </ul>
+        <p class="mt-2">{{ props.diagnosticResult.reason }}</p>
+      </section>
+
+      <section v-if="props.isAdmin" class="mb-6 grid gap-6 xl:grid-cols-2">
+        <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+          <h2 class="text-lg font-semibold text-white">Monitor de colas (tiempo real)</h2>
+          <p class="mt-1 text-sm text-slate-400">Contadores vivos para anticipar trabas antes de que afecten al usuario.</p>
+          <div class="mt-4 grid gap-3 sm:grid-cols-2">
+            <div class="rounded-xl border border-slate-700 bg-slate-950 p-3">
+              <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Uptime</p>
+              <p class="mt-1 text-2xl font-semibold text-cyan-200">{{ queueDepth['monitoring-uptime'] }}</p>
+            </div>
+            <div class="rounded-xl border border-slate-700 bg-slate-950 p-3">
+              <p class="text-xs uppercase tracking-[0.16em] text-slate-400">SSL</p>
+              <p class="mt-1 text-2xl font-semibold text-cyan-200">{{ queueDepth['monitoring-ssl'] }}</p>
+            </div>
+            <div class="rounded-xl border border-slate-700 bg-slate-950 p-3">
+              <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Tech</p>
+              <p class="mt-1 text-2xl font-semibold text-cyan-200">{{ queueDepth['monitoring-tech'] }}</p>
+            </div>
+            <div class="rounded-xl border border-slate-700 bg-slate-950 p-3">
+              <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Headers</p>
+              <p class="mt-1 text-2xl font-semibold text-cyan-200">{{ queueDepth['monitoring-headers'] }}</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+          <h2 class="text-lg font-semibold text-white">Historial de diagnosticos (NOC)</h2>
+          <p class="mt-1 text-sm text-slate-400">Quien lo corrio, cuando y que acciones aplico para destrabar.</p>
+          <div class="mt-4 max-h-72 overflow-auto rounded-xl border border-slate-800">
+            <table class="min-w-full divide-y divide-slate-800 text-left text-xs">
+              <thead class="text-slate-400">
+                <tr>
+                  <th class="px-3 py-2 font-medium">Fecha</th>
+                  <th class="px-3 py-2 font-medium">Usuario</th>
+                  <th class="px-3 py-2 font-medium">Estado</th>
+                  <th class="px-3 py-2 font-medium">Resumen</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/80">
+                <tr v-for="item in props.diagnosticHistory || []" :key="`diag-history-${item.id}`">
+                  <td class="px-3 py-2 text-slate-300">{{ formatMaybeDate(item.created_at) }}</td>
+                  <td class="px-3 py-2 text-slate-300">{{ item.user_name }}</td>
+                  <td class="px-3 py-2">
+                    <span class="rounded-full px-2 py-1" :class="item.status === 'success' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'">
+                      {{ item.status === 'success' ? 'Exito' : 'Advertencia' }}
+                    </span>
+                  </td>
+                  <td class="px-3 py-2 text-slate-300">{{ item.summary }}</td>
+                </tr>
+                <tr v-if="(props.diagnosticHistory || []).length === 0">
+                  <td colspan="4" class="px-3 py-4 text-center text-slate-400">Sin ejecuciones de diagnostico registradas.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
       <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <button type="button" class="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5 text-left transition hover:border-emerald-300/60" @click="setStatusFilter('up')">
           <p class="text-xs uppercase tracking-[0.18em] text-emerald-300">Operativos</p>
@@ -85,10 +155,19 @@
               <button
                 type="button"
                 class="h-11 rounded-xl border border-amber-500/50 px-4 text-sm font-semibold text-amber-200 transition hover:border-amber-300"
-                :disabled="isMassScanRunning"
+                :disabled="isMassScanBusy"
                 @click="scanAllSites"
               >
-                {{ isMassScanRunning ? 'Programando...' : 'Programar actualizacion masiva' }}
+                {{ massScanButtonLabel }}
+              </button>
+              <button
+                v-if="props.isAdmin"
+                type="button"
+                class="h-11 rounded-xl border border-rose-500/50 px-4 text-sm font-semibold text-rose-200 transition hover:border-rose-300"
+                :disabled="isRunningDiagnostic"
+                @click="runDiagnostic"
+              >
+                {{ isRunningDiagnostic ? 'Diagnostico en curso...' : 'Diagnostico' }}
               </button>
               <button
                 type="submit"
@@ -307,8 +386,42 @@ type DashboardProps = {
   diagnosticBreakdown?: Partial<Record<'operativo' | 'respuesta_lenta' | 'responde_con_errores' | 'inestable' | 'no_responde' | 'sin_actualizar', number>>
   searchSuggestions?: string[]
   sites?: Paginated<SiteItem> | SiteItem[]
+  isAdmin?: boolean
+  diagnosticHistory?: Array<{
+    id: number
+    status: 'success' | 'warning'
+    summary: string
+    reason: string
+    steps: string[]
+    issues: string[]
+    queue_before: Record<string, number>
+    queue_after: Record<string, number>
+    created_at: string | null
+    user_name: string
+    user_email: string
+  }>
+  diagnosticResult?: {
+    type: 'success' | 'warning'
+    summary: string
+    steps: string[]
+    reason: string
+  } | null
+  massScanState?: {
+    isRunning?: boolean
+    isCoolingDown?: boolean
+    cooldownUntil?: string | null
+    lastTriggeredAt?: string | null
+  }
   refreshIntervalMs?: number
   updatedAt?: string
+  pipelineMetrics?: {
+    window: string
+    totalChecks: number
+    downChecks: number
+    errorRatePct: number
+    avgLatencyMs: number
+    queueDepth: Record<string, number>
+  }
 }
 
 const props = defineProps<DashboardProps>()
@@ -324,7 +437,32 @@ const localSearch = ref(props.filters?.search ?? '')
 const localStatus = ref((props.filters?.status ?? 'all').toString())
 const actionMessage = ref('')
 const isMassScanRunning = ref(false)
+const isRunningDiagnostic = ref(false)
 const suggestions = computed(() => Array.isArray(props.searchSuggestions) ? props.searchSuggestions : [])
+
+const queueDepth = computed<Record<string, number>>(() => props.pipelineMetrics?.queueDepth ?? {
+  'monitoring-uptime': 0,
+  'monitoring-ssl': 0,
+  'monitoring-tech': 0,
+  'monitoring-headers': 0,
+  'monitoring-alerts': 0,
+})
+
+const isMassScanCoolingDown = computed(() => Boolean(props.massScanState?.isCoolingDown))
+const isMassScanRunningFromServer = computed(() => Boolean(props.massScanState?.isRunning))
+const isMassScanBusy = computed(() => isMassScanRunning.value || isMassScanRunningFromServer.value || isMassScanCoolingDown.value)
+
+const massScanButtonLabel = computed(() => {
+  if (isMassScanRunning.value || isMassScanRunningFromServer.value) {
+    return 'Escaneo masivo en curso...'
+  }
+
+  if (isMassScanCoolingDown.value) {
+    return 'En enfriamiento...'
+  }
+
+  return 'Programar actualizacion masiva'
+})
 
 const normalizedStatusCounts = computed<StatusCounts>(() => ({
   UP: Number(props.statusCounts?.UP ?? props.statusCounts?.up ?? 0),
@@ -380,6 +518,15 @@ const formatDateTimeDdMmYyyy = (date: Date) => {
   const ss = String(date.getSeconds()).padStart(2, '0')
 
   return `${dd}-${mm}-${yyyy} ${hh}:${min}:${ss}`
+}
+
+const formatMaybeDate = (value: string | null) => {
+  if (!value) {
+    return 'Sin dato'
+  }
+
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? 'Sin dato' : formatDateTimeDdMmYyyy(parsed)
 }
 
 const resolveStatusCode = (site: SiteItem): 'up' | 'down' | 'degraded' | 'unknown' => {
@@ -529,7 +676,7 @@ const refreshDashboard = () => {
     preserveState: true,
     preserveScroll: true,
     replace: true,
-    only: ['sites', 'statusCounts', 'diagnosticBreakdown', 'updatedAt'],
+    only: ['sites', 'statusCounts', 'diagnosticBreakdown', 'pipelineMetrics', 'massScanState', 'diagnosticHistory', 'updatedAt'],
   })
 }
 
@@ -546,7 +693,7 @@ const applySearchDebounced = () => {
     preserveState: true,
     preserveScroll: true,
     replace: true,
-    only: ['sites', 'statusCounts', 'diagnosticBreakdown', 'updatedAt'],
+    only: ['sites', 'statusCounts', 'diagnosticBreakdown', 'pipelineMetrics', 'massScanState', 'diagnosticHistory', 'updatedAt'],
   })
 }
 
@@ -565,7 +712,7 @@ const goToPage = (page: number) => {
     preserveState: true,
     preserveScroll: true,
     replace: true,
-    only: ['sites', 'statusCounts', 'diagnosticBreakdown', 'updatedAt'],
+    only: ['sites', 'statusCounts', 'diagnosticBreakdown', 'pipelineMetrics', 'massScanState', 'diagnosticHistory', 'updatedAt'],
   })
 }
 
@@ -588,7 +735,13 @@ const scanSingleSite = (siteId: number) => {
 }
 
 const scanAllSites = () => {
-  if (isMassScanRunning.value) {
+  if (isMassScanBusy.value) {
+    if (isMassScanCoolingDown.value) {
+      actionMessage.value = 'Escaneo masivo temporalmente bloqueado para evitar saturacion. Intenta de nuevo al terminar el enfriamiento.'
+      return
+    }
+
+    actionMessage.value = 'Ya hay un escaneo masivo en curso. Espera a que termine.'
     return
   }
 
@@ -597,7 +750,7 @@ const scanAllSites = () => {
   router.post('/monitoring/dashboard/scan-all', {}, {
     preserveScroll: true,
     onSuccess: () => {
-      actionMessage.value = 'Actualizacion masiva programada. El escaneo general se ejecuta cada hora para evitar saturacion.'
+      actionMessage.value = 'Reescaneo masivo iniciado. El sistema esta despachando los sitios en segundo plano.'
       isMassScanRunning.value = false
       refreshDashboard()
     },
@@ -607,6 +760,25 @@ const scanAllSites = () => {
     },
     onFinish: () => {
       isMassScanRunning.value = false
+    },
+  })
+}
+
+const runDiagnostic = () => {
+  if (isRunningDiagnostic.value) {
+    return
+  }
+
+  isRunningDiagnostic.value = true
+  actionMessage.value = 'Ejecutando diagnostico operativo para destrabar colas...'
+
+  router.post('/monitoring/dashboard/diagnostic', {}, {
+    preserveScroll: true,
+    onFinish: () => {
+      isRunningDiagnostic.value = false
+    },
+    onError: () => {
+      actionMessage.value = 'No se pudo ejecutar el diagnostico administrativo.'
     },
   })
 }
@@ -714,6 +886,10 @@ watch(localSearch, (value, previousValue) => {
 })
 
 onMounted(() => {
+  if (isMassScanCoolingDown.value) {
+    actionMessage.value = 'Escaneo masivo temporalmente bloqueado para proteger la estabilidad del sistema.'
+  }
+
   if (localStatus.value !== 'all' && normalizedSites.value.length === 0) {
     showAllSites()
   }
