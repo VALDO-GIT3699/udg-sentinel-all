@@ -148,6 +148,22 @@ final class SiteDetailController extends Controller
             ->all();
 
         $diagnosis = $this->resolveSiteDiagnosis($site, strtolower((string) ($site->current_status ?? 'unknown')), $site->latestCheck);
+        $sslCertificate = $site->sslCertificate;
+        $normalizedSslCertificate = null;
+
+        if ($sslCertificate !== null) {
+            $validUntil = $sslCertificate->valid_until;
+            $normalizedDaysRemaining = $validUntil !== null
+                ? (int) now()->diffInDays($validUntil, false)
+                : $sslCertificate->days_remaining;
+
+            $normalizedSslCertificate = [
+                'valid_until' => optional($validUntil)?->toIso8601String(),
+                'issuer' => $sslCertificate->issuer,
+                'days_remaining' => $normalizedDaysRemaining,
+                'algorithm' => $sslCertificate->algorithm,
+            ];
+        }
 
         $notesTimeline = SiteEvent::query()
             ->where('site_id', $site->id)
@@ -171,7 +187,9 @@ final class SiteDetailController extends Controller
             ->all();
 
         return [
-            'site' => $site,
+            'site' => array_merge($site->toArray(), [
+                'ssl_certificate' => $normalizedSslCertificate,
+            ]),
             'currentDiagnosis' => $diagnosis,
             'notesTimeline' => $notesTimeline,
             'timeline' => $checksTimeline,

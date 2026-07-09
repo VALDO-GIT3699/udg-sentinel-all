@@ -640,10 +640,21 @@ final class DashboardController extends Controller
                 $displayStatus = $this->resolveDashboardStatus($site, $status, $latestCheck);
                 $technology = $this->resolveTechnologyInfo($site);
                 $certificate = $site->sslCertificate;
-                $certificateLabel = 'Sin certificado';
+                $certificatePayload = null;
 
                 if ($certificate !== null) {
-                    $certificateLabel = $certificate->is_expired ? 'Expirado' : 'Vigente';
+                    $validUntil = $certificate->valid_until;
+                    $normalizedDaysRemaining = $validUntil !== null
+                        ? (int) now()->diffInDays($validUntil, false)
+                        : $certificate->days_remaining;
+
+                    $certificatePayload = [
+                        'valid_until' => optional($validUntil)?->toIso8601String(),
+                        'issuer' => $certificate->issuer,
+                        'days_remaining' => $normalizedDaysRemaining,
+                        'algorithm' => $certificate->algorithm,
+                        'is_expired' => $normalizedDaysRemaining !== null ? $normalizedDaysRemaining < 0 : $certificate->is_expired,
+                    ];
                 }
 
                 return [
@@ -661,8 +672,7 @@ final class DashboardController extends Controller
                     'technology_name' => $technology['name'],
                     'technology_version' => $technology['version'],
                     'technology_label' => $technology['label'],
-                    'certificate_present' => $certificate !== null,
-                    'certificate_label' => $certificateLabel,
+                    'ssl_certificate' => $certificatePayload,
                 ];
             })
         );

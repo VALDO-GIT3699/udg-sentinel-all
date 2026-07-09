@@ -231,9 +231,9 @@
                 <td class="px-4 py-4 text-slate-300">
                   <span
                     class="rounded-full px-2.5 py-1 text-xs font-semibold"
-                    :class="site.certificate_present ? 'bg-emerald-500/15 text-emerald-200' : 'bg-slate-700 text-slate-300'"
+                    :class="certificateBadgeClass(site)"
                   >
-                    {{ site.certificate_label || 'Sin certificado' }}
+                    {{ certificateLabel(site) }}
                   </span>
                 </td>
                 <td class="px-4 py-4">
@@ -360,8 +360,13 @@ type SiteItem = {
   name: string | null
   domain: string | null
   url?: string | null
-  certificate_present?: boolean
-  certificate_label?: string | null
+  ssl_certificate?: {
+    valid_until: string | null
+    issuer: string | null
+    days_remaining: number | null
+    algorithm: string | null
+    is_expired?: boolean
+  } | null
   current_status: string
   current_status_code?: string
   display_status_code?: string
@@ -685,6 +690,50 @@ const statusLabel = (status: ReturnType<typeof resolveStatusCode>) => {
 const fallbackSiteName = (site: SiteItem) => site.name?.trim() || site.domain?.trim() || `Sitio #${site.id}`
 
 const fallbackDomain = (domain: string | null) => domain?.trim() || 'Sin dominio'
+
+const certificateLabel = (site: SiteItem) => {
+  const cert = site.ssl_certificate
+
+  if (!cert) {
+    return 'Sin certificado'
+  }
+
+  if (cert.days_remaining !== null) {
+    if (cert.days_remaining < 0 || cert.is_expired) {
+      return 'Expirado'
+    }
+
+    if (cert.days_remaining <= 30) {
+      return `Vence en ${cert.days_remaining} días`
+    }
+
+    return 'Vigente'
+  }
+
+  if (cert.valid_until || cert.issuer || cert.algorithm) {
+    return 'Vigente'
+  }
+
+  return 'Sin datos'
+}
+
+const certificateBadgeClass = (site: SiteItem) => {
+  const cert = site.ssl_certificate
+
+  if (!cert) {
+    return 'bg-slate-700 text-slate-300'
+  }
+
+  if (cert.days_remaining !== null && (cert.days_remaining < 0 || cert.is_expired)) {
+    return 'bg-rose-500/15 text-rose-200'
+  }
+
+  if (cert.days_remaining !== null && cert.days_remaining <= 30) {
+    return 'bg-amber-500/15 text-amber-200'
+  }
+
+  return 'bg-emerald-500/15 text-emerald-200'
+}
 
 const safeSiteUrl = (site: SiteItem) => {
   const candidate = site.url?.trim() || (site.domain ? `https://${site.domain}` : '')

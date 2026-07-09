@@ -137,7 +137,7 @@ final class RunSslCheckJob implements ShouldQueue
                 : null;
 
             $daysRemaining = $validUntil !== null
-                ? (int) $validUntil->diffInDays(now(), false)
+                ? (int) now()->diffInDays($validUntil, false)
                 : null;
             $isExpired = $daysRemaining !== null ? $daysRemaining < 0 : false;
 
