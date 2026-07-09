@@ -8,7 +8,10 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 
 Route::get('/', function () {
-	if (app()->environment('local') && Auth::guest()) {
+	$requestIp = (string) request()->ip();
+	$isTrustedLocalIp = in_array($requestIp, ['127.0.0.1', '::1'], true);
+
+	if (app()->environment('local') && Auth::guest() && $isTrustedLocalIp) {
 		return redirect()->route('monitoring.local-login');
 	}
 
@@ -17,12 +20,15 @@ Route::get('/', function () {
 
 Route::middleware('guest')->group(function () {
 	Route::get('/login', function () {
-		if (app()->environment('local')) {
+		$requestIp = (string) request()->ip();
+		$isTrustedLocalIp = in_array($requestIp, ['127.0.0.1', '::1'], true);
+
+		if (app()->environment('local') && $isTrustedLocalIp) {
 			return redirect()->route('monitoring.local-login');
 		}
 
 		return view('auth.quick-login', [
-			'defaultUser' => 'udgmonitoreo26B',
+			'defaultUser' => (string) env('MONITORING_LOGIN_DEFAULT_USER', 'udgmonitoreo26B'),
 		]);
 	})->name('login');
 
@@ -30,6 +36,7 @@ Route::middleware('guest')->group(function () {
 		$credentials = $request->validate([
 			'email' => ['required', 'string'],
 			'password' => ['required', 'string'],
+			'remember' => ['nullable', 'boolean'],
 		]);
 
 		$maxAttempts = max(3, (int) env('AUTH_MAX_LOGIN_ATTEMPTS', 10));
@@ -43,7 +50,10 @@ Route::middleware('guest')->group(function () {
 			])->onlyInput('email');
 		}
 
-		if (! Auth::attempt($credentials, true)) {
+		$remember = (bool) ($credentials['remember'] ?? false);
+		unset($credentials['remember']);
+
+		if (! Auth::attempt($credentials, $remember)) {
 			RateLimiter::hit($throttleKey, $lockoutMinutes * 60);
 			return back()->withErrors([
 				'email' => 'Credenciales invalidas.',

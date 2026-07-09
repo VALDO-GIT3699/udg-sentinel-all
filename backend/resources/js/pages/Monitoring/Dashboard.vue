@@ -12,106 +12,103 @@
         <p class="text-xs text-slate-400">Actualizado: {{ formattedUpdatedAt }}</p>
       </header>
 
+      <section class="mb-5 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          class="h-11 rounded-xl border border-amber-500/60 bg-amber-500/10 px-4 text-sm font-semibold text-amber-100 transition hover:border-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="isMassScanRunning"
+          @click="scanAllSites"
+        >
+          {{ isMassScanRunning ? 'Escaneo masivo en ejecución...' : 'Iniciar escaneo masivo' }}
+        </button>
+        <p class="text-xs text-slate-400">Revalida disponibilidad, SSL, cabeceras y tecnologías en todos los sitios.</p>
+      </section>
+
+      <section v-if="canManageSettings" class="mb-6 rounded-2xl border border-slate-700 bg-slate-900/80 p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Modo de ejecución</p>
+            <h2 class="mt-1 text-lg font-semibold text-white">Escaneos programados</h2>
+            <p class="mt-1 text-sm text-slate-300">Controla si el scheduler ejecuta ciclos automáticos o si todo se maneja solo manualmente.</p>
+          </div>
+          <button
+            type="button"
+            class="h-10 rounded-xl border px-4 text-sm font-semibold transition disabled:opacity-60"
+            :class="scheduledScansEnabledLocal ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-200 hover:border-emerald-300' : 'border-rose-500/60 bg-rose-500/10 text-rose-200 hover:border-rose-300'"
+            :disabled="isUpdatingScheduledScans"
+            @click="toggleScheduledScans"
+          >
+            {{ isUpdatingScheduledScans ? 'Guardando...' : (scheduledScansEnabledLocal ? 'Programados ACTIVOS' : 'Programados DESACTIVADOS') }}
+          </button>
+        </div>
+      </section>
+
       <section v-if="actionMessage" class="mb-4 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
         {{ actionMessage }}
       </section>
 
-      <section
-        v-if="props.diagnosticResult"
-        class="mb-4 rounded-xl border px-4 py-3 text-sm"
-        :class="props.diagnosticResult.type === 'success' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100' : 'border-amber-500/40 bg-amber-500/10 text-amber-100'"
-      >
-        <p class="font-semibold">Diagnóstico del sistema</p>
-        <p class="mt-1">{{ props.diagnosticResult.summary }}</p>
-        <ul v-if="props.diagnosticResult.steps.length > 0" class="mt-2 list-disc pl-5">
-          <li v-for="(step, index) in props.diagnosticResult.steps" :key="`diagnostic-step-${index}`">{{ step }}</li>
-        </ul>
-        <p class="mt-2">{{ props.diagnosticResult.reason }}</p>
+      <section v-if="isMassScanRunning" class="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+        Snapshot estable activo: la lista y los conteos quedan congelados durante la corrida para evitar saltos visuales. Se actualizarán automáticamente al finalizar.
       </section>
 
-      <section v-if="props.isAdmin" class="mb-6 grid gap-6 xl:grid-cols-2">
-        <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
-          <h2 class="text-lg font-semibold text-white">Monitor de colas (tiempo real)</h2>
-          <p class="mt-1 text-sm text-slate-400">Contadores vivos para anticipar trabas antes de que afecten al usuario.</p>
-          <div class="mt-4 grid gap-3 sm:grid-cols-2">
-            <div class="rounded-xl border border-slate-700 bg-slate-950 p-3">
-              <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Uptime</p>
-              <p class="mt-1 text-2xl font-semibold text-cyan-200">{{ queueDepth['monitoring-uptime'] }}</p>
-            </div>
-            <div class="rounded-xl border border-slate-700 bg-slate-950 p-3">
-              <p class="text-xs uppercase tracking-[0.16em] text-slate-400">SSL</p>
-              <p class="mt-1 text-2xl font-semibold text-cyan-200">{{ queueDepth['monitoring-ssl'] }}</p>
-            </div>
-            <div class="rounded-xl border border-slate-700 bg-slate-950 p-3">
-              <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Tech</p>
-              <p class="mt-1 text-2xl font-semibold text-cyan-200">{{ queueDepth['monitoring-tech'] }}</p>
-            </div>
-            <div class="rounded-xl border border-slate-700 bg-slate-950 p-3">
-              <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Headers</p>
-              <p class="mt-1 text-2xl font-semibold text-cyan-200">{{ queueDepth['monitoring-headers'] }}</p>
-            </div>
+      <section v-if="showMassScanOverlay" class="mb-6 rounded-2xl border border-cyan-500/40 bg-slate-900/95 p-5 shadow-[0_15px_45px_rgba(8,145,178,0.15)]">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p class="text-xs uppercase tracking-[0.22em] text-cyan-300">Escaneo masivo en curso</p>
+            <h2 class="mt-2 text-xl font-semibold text-white">Revalidando todos los sitios y tecnologías</h2>
+            <p class="mt-1 text-sm text-slate-300">
+              Completado {{ massScanCompletedTasks }} de {{ massScanTotalTasks }} tareas · Restantes {{ massScanRemainingTasks }}
+            </p>
           </div>
-        </article>
+          <div class="text-right">
+            <p class="text-3xl font-semibold text-cyan-200">{{ massScanProgressPct.toFixed(1) }}%</p>
+            <p class="mt-1 text-xs text-slate-400">Inicio: {{ massScanStartedAt }}</p>
+          </div>
+        </div>
 
-        <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
-          <h2 class="text-lg font-semibold text-white">Historial de diagnosticos (NOC)</h2>
-          <p class="mt-1 text-sm text-slate-400">Quien lo corrio, cuando y que acciones aplico para destrabar.</p>
-          <div class="mt-4 max-h-72 overflow-auto rounded-xl border border-slate-800">
-            <table class="min-w-full divide-y divide-slate-800 text-left text-xs">
-              <thead class="text-slate-400">
-                <tr>
-                  <th class="px-3 py-2 font-medium">Fecha</th>
-                  <th class="px-3 py-2 font-medium">Usuario</th>
-                  <th class="px-3 py-2 font-medium">Estado</th>
-                  <th class="px-3 py-2 font-medium">Resumen</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-800/80">
-                <tr v-for="item in props.diagnosticHistory || []" :key="`diag-history-${item.id}`">
-                  <td class="px-3 py-2 text-slate-300">{{ formatMaybeDate(item.created_at) }}</td>
-                  <td class="px-3 py-2 text-slate-300">{{ item.user_name }}</td>
-                  <td class="px-3 py-2">
-                    <span class="rounded-full px-2 py-1" :class="item.status === 'success' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'">
-                      {{ item.status === 'success' ? 'Exito' : 'Advertencia' }}
-                    </span>
-                  </td>
-                  <td class="px-3 py-2 text-slate-300">{{ item.summary }}</td>
-                </tr>
-                <tr v-if="(props.diagnosticHistory || []).length === 0">
-                  <td colspan="4" class="px-3 py-4 text-center text-slate-400">Sin ejecuciones de diagnostico registradas.</td>
-                </tr>
-              </tbody>
-            </table>
+        <div class="mt-4 h-3 w-full overflow-hidden rounded-full bg-slate-800">
+          <div class="h-full rounded-full bg-gradient-to-r from-cyan-400 via-emerald-300 to-cyan-200 transition-all duration-300" :style="{ width: `${massScanProgressPct}%` }" />
+        </div>
+
+        <div class="mt-5 grid gap-3 md:grid-cols-2">
+          <div v-for="stage in massScanStageRows" :key="stage.key" class="rounded-xl border border-slate-700/80 bg-slate-950/60 p-3">
+            <div class="mb-2 flex items-center justify-between text-xs">
+              <span class="font-semibold uppercase tracking-[0.16em] text-slate-300">{{ stage.label }}</span>
+              <span class="text-slate-400">{{ stage.completed }}/{{ stage.total }} · faltan {{ stage.remaining }}</span>
+            </div>
+            <div class="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+              <div class="h-full rounded-full bg-cyan-400 transition-all duration-300" :style="{ width: `${stage.progressPct}%` }" />
+            </div>
           </div>
-        </article>
+        </div>
       </section>
 
       <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <button type="button" class="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5 text-left transition hover:border-emerald-300/60" @click="setStatusFilter('up')">
+        <button type="button" class="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5 text-left transition hover:border-emerald-300/60 disabled:cursor-not-allowed disabled:opacity-60" :disabled="isSnapshotFrozen" @click="setStatusFilter('up')">
           <p class="text-xs uppercase tracking-[0.18em] text-emerald-300">Operativos</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ normalizedStatusCounts.UP }}</p>
         </button>
-        <button type="button" class="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-5 text-left transition hover:border-amber-300/60" @click="setStatusFilter('degraded')">
+        <button type="button" class="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-5 text-left transition hover:border-amber-300/60 disabled:cursor-not-allowed disabled:opacity-60" :disabled="isSnapshotFrozen" @click="setStatusFilter('degraded')">
           <p class="text-xs uppercase tracking-[0.18em] text-amber-300">Con incidencias</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ normalizedStatusCounts.DEGRADED }}</p>
         </button>
-        <button type="button" class="rounded-2xl border border-rose-500/25 bg-rose-500/10 p-5 text-left transition hover:border-rose-300/60" @click="setStatusFilter('down')">
+        <button type="button" class="rounded-2xl border border-rose-500/25 bg-rose-500/10 p-5 text-left transition hover:border-rose-300/60 disabled:cursor-not-allowed disabled:opacity-60" :disabled="isSnapshotFrozen" @click="setStatusFilter('down')">
           <p class="text-xs uppercase tracking-[0.18em] text-rose-300">No responde</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ normalizedStatusCounts.DOWN }}</p>
         </button>
-        <button type="button" class="rounded-2xl border border-amber-500/20 bg-amber-500/8 p-5 text-left transition hover:border-amber-300/50" @click="setStatusFilter('unknown')">
-          <p class="text-xs uppercase tracking-[0.18em] text-slate-300">En la cola</p>
+        <button type="button" class="rounded-2xl border border-amber-500/20 bg-amber-500/8 p-5 text-left transition hover:border-amber-300/50 disabled:cursor-not-allowed disabled:opacity-60" :disabled="isSnapshotFrozen" @click="setStatusFilter('unknown')">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-300">Sin actualizar</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ normalizedStatusCounts.UNKNOWN }}</p>
         </button>
       </section>
 
       <section class="mt-6 grid gap-6 xl:grid-cols-2">
         <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
-          <h2 class="text-lg font-semibold text-white">Distribucion por estado</h2>
+            <h2 class="text-lg font-semibold text-white">Distribución por estado</h2>
           <VueApexCharts type="pie" height="280" :options="statusPieOptions" :series="statusPieSeries" />
         </article>
         <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
-          <h2 class="text-lg font-semibold text-white">Panorama de diagnostico operativo</h2>
+            <h2 class="text-lg font-semibold text-white">Panorama de diagnóstico operativo</h2>
           <VueApexCharts type="bar" height="280" :options="diagnosticBarOptions" :series="diagnosticBarSeries" />
         </article>
       </section>
@@ -120,10 +117,10 @@
         <header class="flex flex-col gap-4 border-b border-slate-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 class="text-xl font-semibold text-white">Sitios monitoreados</h2>
-            <p class="mt-1 text-sm text-slate-400">Un clic abre el detalle, y el dominio abre el sitio en otra pestana.</p>
+            <p class="mt-1 text-sm text-slate-400">Un clic abre el detalle, y el dominio abre el sitio en otra pestaña.</p>
           </div>
 
-          <form class="flex w-full flex-col gap-3" @submit.prevent="applySearch">
+          <form class="flex w-full max-w-xl flex-col gap-3 sm:flex-row" @submit.prevent="applySearch">
             <label class="sr-only" for="dashboard-search">Buscar sitio o dominio</label>
             <input
               id="dashboard-search"
@@ -131,108 +128,70 @@
               list="monitoring-site-suggestions"
               type="search"
               autocomplete="off"
+              :disabled="isSnapshotFrozen"
               placeholder="Buscar sitio o dominio"
               class="h-11 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
             />
             <datalist id="monitoring-site-suggestions">
               <option v-for="suggestion in suggestions" :key="suggestion" :value="suggestion" />
             </datalist>
-            <div class="flex flex-wrap gap-2">
-              <button
-                type="button"
-                class="h-11 rounded-xl border border-sky-500/50 px-4 text-sm font-semibold text-sky-200 transition hover:border-sky-300"
-                @click="showAllSites"
-              >
-                Ver todos
-              </button>
-              <button
-                type="button"
-                class="h-11 rounded-xl border border-emerald-500/50 px-4 text-sm font-semibold text-emerald-200 transition hover:border-emerald-300"
-                @click="showRegisterForm = !showRegisterForm"
-              >
-                {{ showRegisterForm ? 'Cerrar alta manual' : 'Registrar nuevo sitio .udg.mx' }}
-              </button>
+            <div class="flex gap-2">
               <button
                 type="button"
                 class="h-11 rounded-xl border border-amber-500/50 px-4 text-sm font-semibold text-amber-200 transition hover:border-amber-300"
-                :disabled="isMassScanBusy"
+                :disabled="isMassScanRunning"
                 @click="scanAllSites"
               >
-                {{ massScanButtonLabel }}
+                {{ isMassScanRunning ? 'Escaneo en ejecución...' : 'Iniciar escaneo masivo' }}
               </button>
               <button
-                v-if="props.isAdmin"
                 type="button"
-                class="h-11 rounded-xl border border-rose-500/50 px-4 text-sm font-semibold text-rose-200 transition hover:border-rose-300"
-                :disabled="isRunningDiagnostic"
-                @click="runDiagnostic"
+                class="h-11 rounded-xl border border-emerald-500/50 px-4 text-sm font-semibold text-emerald-200 transition hover:border-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="isMassScanRunning || selectedSiteIds.length === 0"
+                @click="scanSelectedSites"
               >
-                {{ isRunningDiagnostic ? 'Diagnostico en curso...' : 'Diagnostico' }}
+                Escanear seleccionados ({{ selectedSiteIds.length }})
               </button>
               <button
                 type="submit"
                 class="h-11 rounded-xl bg-cyan-400 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
+                :disabled="isSnapshotFrozen"
               >
                 Buscar
               </button>
               <button
                 type="button"
                 class="h-11 rounded-xl border border-slate-700 px-4 text-sm text-slate-200 transition hover:border-slate-500"
+                :disabled="isSnapshotFrozen"
                 @click="clearSearch"
               >
                 Limpiar
               </button>
             </div>
           </form>
-
-          <form v-if="showRegisterForm" class="mt-4 grid w-full gap-3 border-t border-slate-800 pt-4 lg:grid-cols-4" @submit.prevent="registerSite">
-            <input
-              v-model="registerName"
-              type="text"
-              placeholder="Nombre del sitio"
-              class="h-11 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
-            />
-            <input
-              v-model="registerDomain"
-              type="text"
-              placeholder="subdominio.udg.mx"
-              class="h-11 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
-            />
-            <input
-              v-model="registerEntity"
-              type="text"
-              placeholder="Entidad (opcional)"
-              class="h-11 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
-            />
-            <button
-              type="submit"
-              class="h-11 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-50"
-              :disabled="isRegisteringSite"
-            >
-              {{ isRegisteringSite ? 'Registrando...' : 'Guardar y monitorear' }}
-            </button>
-            <textarea
-              v-model="registerNotes"
-              rows="2"
-              placeholder="Notas (opcional)"
-              class="lg:col-span-4 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
-            />
-          </form>
-
         </header>
 
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-slate-800 text-left text-sm">
             <thead>
               <tr class="text-slate-400">
+                <th class="px-4 py-4 font-medium">
+                  <input
+                    type="checkbox"
+                    class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-cyan-400 focus:ring-cyan-500"
+                    :checked="isAllVisibleSelected"
+                    :indeterminate.prop="isSomeVisibleSelected && !isAllVisibleSelected"
+                    @click.stop
+                    @change="toggleSelectVisible"
+                  />
+                </th>
                 <th class="px-4 py-4 font-medium">Sitio</th>
                 <th class="px-4 py-4 font-medium">Dominio</th>
-                <th class="px-4 py-4 font-medium">CMS</th>
-                <th class="px-4 py-4 font-medium">IP servidor</th>
+                <th class="px-4 py-4 font-medium">Tecnología</th>
                 <th class="px-4 py-4 font-medium">Certificado</th>
                 <th class="px-4 py-4 font-medium">Estado operativo</th>
-                <th class="px-4 py-4 font-medium">Estatus proyecto</th>
-                <th class="px-4 py-4 font-medium">Comentarios</th>
+                <th class="px-4 py-4 font-medium">Diagnóstico actual</th>
+                <th class="px-4 py-4 font-medium">Detalle técnico</th>
                 <th class="px-4 py-4 font-medium">Último check</th>
                 <th class="px-4 py-4 font-medium">Acciones</th>
               </tr>
@@ -248,20 +207,33 @@
                 @keydown.enter.prevent="openSiteDetail(site.id)"
                 @keydown.space.prevent="openSiteDetail(site.id)"
               >
+                <td class="px-4 py-4" @click.stop>
+                  <input
+                    type="checkbox"
+                    class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-cyan-400 focus:ring-cyan-500"
+                    :checked="isSiteSelected(site.id)"
+                    @click.stop
+                    @change="toggleSelectedSite(site.id)"
+                  />
+                </td>
                 <td class="px-4 py-4 align-middle">
                   <p class="font-medium text-white">{{ fallbackSiteName(site) }}</p>
                   <p class="mt-1 text-xs text-slate-500">Abrir detalle</p>
                 </td>
                 <td class="px-4 py-4 text-slate-300">
                   <a :href="safeSiteUrl(site)" target="_blank" rel="noopener noreferrer" class="text-cyan-300 hover:text-cyan-200" @click.stop>
-                    {{ displayDomain(site) }}
+                    {{ fallbackDomain(site.domain) }}
                   </a>
                 </td>
-                <td class="px-4 py-4 text-slate-300">{{ labelize(site.cms || 'Sin dato') }}</td>
-                <td class="px-4 py-4 text-slate-300">{{ site.server_ip || 'Externo' }}</td>
                 <td class="px-4 py-4 text-slate-300">
-                  <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="site.certificate_present ? 'bg-emerald-500/15 text-emerald-200' : 'bg-slate-700 text-slate-300'">
-                    {{ site.certificate_label || 'No' }}
+                  <span class="rounded-full bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-200">{{ site.technology_label || 'No identificada' }}</span>
+                </td>
+                <td class="px-4 py-4 text-slate-300">
+                  <span
+                    class="rounded-full px-2.5 py-1 text-xs font-semibold"
+                    :class="site.certificate_present ? 'bg-emerald-500/15 text-emerald-200' : 'bg-slate-700 text-slate-300'"
+                  >
+                    {{ site.certificate_label || 'Sin certificado' }}
                   </span>
                 </td>
                 <td class="px-4 py-4">
@@ -278,8 +250,8 @@
                     </span>
                   </div>
                 </td>
-                <td class="px-4 py-4 text-slate-300">{{ site.project_status || '-' }}</td>
-                <td class="px-4 py-4 text-slate-300">{{ site.comments || '-' }}</td>
+                <td class="px-4 py-4 text-slate-300">{{ site.diagnostic_label || '-' }}</td>
+                <td class="px-4 py-4 text-slate-300">{{ site.diagnostic_reason || '-' }}</td>
                 <td class="px-4 py-4 text-slate-400">{{ formatCheckTime(site.last_checked_at, resolveStatusCode(site)) }}</td>
                 <td class="px-4 py-4" @click.stop>
                   <button type="button" class="rounded-lg border border-cyan-600/60 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:border-cyan-400" @click="scanSingleSite(site.id)">
@@ -288,11 +260,8 @@
                 </td>
               </tr>
               <tr v-if="normalizedSites.length === 0">
-                <td :colspan="10" class="px-4 py-12 text-center text-sm text-slate-400">
-                  <p>No hay sitios que coincidan con la búsqueda actual.</p>
-                  <button type="button" class="mt-3 rounded-lg border border-sky-500/40 px-3 py-1.5 text-xs font-semibold text-sky-200" @click="showAllSites">
-                    Mostrar todos los sitios
-                  </button>
+                <td colspan="10" class="px-4 py-12 text-center text-sm text-slate-400">
+                  No hay sitios que coincidan con la búsqueda actual.
                 </td>
               </tr>
             </tbody>
@@ -309,7 +278,7 @@
             <button
               type="button"
               class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="currentPage <= 1"
+              :disabled="currentPage <= 1 || isSnapshotFrozen"
               @click="goToPage(currentPage - 1)"
             >
               Anterior
@@ -317,13 +286,52 @@
             <button
               type="button"
               class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="currentPage >= lastPage"
+              :disabled="currentPage >= lastPage || isSnapshotFrozen"
               @click="goToPage(currentPage + 1)"
             >
               Siguiente
             </button>
           </div>
         </footer>
+      </section>
+
+      <section class="mt-8 rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+        <header class="mb-4">
+          <h2 class="text-xl font-semibold text-white">Histórico de escaneos masivos</h2>
+          <p class="mt-1 text-sm text-slate-400">Auditoría de quién lanzó cada ejecución, cuándo inició y cómo terminó.</p>
+        </header>
+
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-slate-800 text-left text-sm">
+            <thead>
+              <tr class="text-slate-400">
+                <th class="px-4 py-3 font-medium">Inicio</th>
+                <th class="px-4 py-3 font-medium">Usuario</th>
+                <th class="px-4 py-3 font-medium">Modo</th>
+                <th class="px-4 py-3 font-medium">Estado</th>
+                <th class="px-4 py-3 font-medium">Avance</th>
+                <th class="px-4 py-3 font-medium">Fin</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/80">
+              <tr v-for="run in massScanHistoryNormalized" :key="run.run_id">
+                <td class="px-4 py-3 text-slate-300">{{ formatDateTime(run.started_at) }}</td>
+                <td class="px-4 py-3 text-slate-300">{{ run.initiated_by || 'Sistema' }}</td>
+                <td class="px-4 py-3 text-slate-300">{{ run.trigger_mode === 'manual' ? 'Manual' : 'Programado' }}</td>
+                <td class="px-4 py-3">
+                  <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="massScanStatusClass(run.status)">
+                    {{ massScanStatusLabel(run.status) }}
+                  </span>
+                </td>
+                <td class="px-4 py-3 text-slate-300">{{ run.completed_tasks }}/{{ run.total_tasks }} · fallos {{ run.failed_tasks }}</td>
+                <td class="px-4 py-3 text-slate-400">{{ formatDateTime(run.completed_at) }}</td>
+              </tr>
+              <tr v-if="massScanHistoryNormalized.length === 0">
+                <td colspan="6" class="px-4 py-10 text-center text-sm text-slate-400">Sin ejecuciones registradas todavía.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </section>
   </main>
@@ -335,7 +343,7 @@ import { router } from '@inertiajs/vue3'
 import type { ApexOptions } from 'apexcharts'
 import VueApexCharts from 'vue3-apexcharts'
 
-const DEFAULT_REFRESH_INTERVAL_MS = 15000
+const DEFAULT_REFRESH_INTERVAL_MS = 5000
 const DEFAULT_PER_PAGE = 50
 
 type StatusCounts = {
@@ -352,12 +360,8 @@ type SiteItem = {
   name: string | null
   domain: string | null
   url?: string | null
-  cms?: string
-  server_ip?: string
   certificate_present?: boolean
-  certificate_label?: string
-  project_status?: string
-  comments?: string
+  certificate_label?: string | null
   current_status: string
   current_status_code?: string
   display_status_code?: string
@@ -365,6 +369,9 @@ type SiteItem = {
   diagnostic_bucket?: string | null
   diagnostic_label?: string | null
   diagnostic_reason?: string | null
+  technology_name?: string | null
+  technology_version?: string | null
+  technology_label?: string | null
 }
 
 type Paginated<T> = {
@@ -386,103 +393,232 @@ type DashboardProps = {
   diagnosticBreakdown?: Partial<Record<'operativo' | 'respuesta_lenta' | 'responde_con_errores' | 'inestable' | 'no_responde' | 'sin_actualizar', number>>
   searchSuggestions?: string[]
   sites?: Paginated<SiteItem> | SiteItem[]
-  isAdmin?: boolean
-  diagnosticHistory?: Array<{
-    id: number
-    status: 'success' | 'warning'
-    summary: string
-    reason: string
-    steps: string[]
-    issues: string[]
-    queue_before: Record<string, number>
-    queue_after: Record<string, number>
-    created_at: string | null
-    user_name: string
-    user_email: string
-  }>
-  diagnosticResult?: {
-    type: 'success' | 'warning'
-    summary: string
-    steps: string[]
-    reason: string
-  } | null
-  massScanState?: {
-    isRunning?: boolean
-    isCoolingDown?: boolean
-    cooldownUntil?: string | null
-    lastTriggeredAt?: string | null
-  }
+  massScanProgress?: MassScanProgressPayload | null
+  massScanHistory?: MassScanHistoryItem[]
+  scheduledScansEnabled?: boolean
+  canManageSettings?: boolean
   refreshIntervalMs?: number
   updatedAt?: string
-  pipelineMetrics?: {
-    window: string
-    totalChecks: number
-    downChecks: number
-    errorRatePct: number
-    avgLatencyMs: number
-    queueDepth: Record<string, number>
-  }
+}
+
+type MassScanStage = {
+  completed: number
+  failed?: number
+  total: number
+  remaining: number
+  progress_pct: number
+}
+
+type MassScanProgressPayload = {
+  run_id: string
+  status: 'running' | 'completed_ok' | 'completed_with_errors' | 'incomplete'
+  started_at: string
+  last_progress_at?: string | null
+  completed_at?: string | null
+  total_sites: number
+  total_tasks: number
+  completed_tasks: number
+  failed_tasks?: number
+  remaining_tasks: number
+  progress_pct: number
+  stages: Record<'uptime' | 'ssl' | 'headers' | 'technology', MassScanStage>
+}
+
+type MassScanHistoryItem = {
+  run_id: string
+  trigger_mode: 'manual' | 'scheduled' | string
+  status: 'running' | 'completed_ok' | 'completed_with_errors' | 'incomplete' | string
+  total_sites: number
+  total_tasks: number
+  completed_tasks: number
+  failed_tasks: number
+  started_at: string | null
+  last_progress_at: string | null
+  completed_at: string | null
+  initiated_by: string | null
 }
 
 const props = defineProps<DashboardProps>()
 
-const showRegisterForm = ref(false)
-const registerName = ref('')
-const registerDomain = ref('')
-const registerEntity = ref('')
-const registerNotes = ref('')
-const isRegisteringSite = ref(false)
+type DashboardSnapshot = {
+  sites?: Paginated<SiteItem> | SiteItem[]
+  statusCounts?: StatusCountPayload
+  diagnosticBreakdown?: DashboardProps['diagnosticBreakdown']
+  updatedAt?: string
+}
 
 const localSearch = ref(props.filters?.search ?? '')
 const localStatus = ref((props.filters?.status ?? 'all').toString())
 const actionMessage = ref('')
-const isMassScanRunning = ref(false)
-const isRunningDiagnostic = ref(false)
-const suggestions = computed(() => Array.isArray(props.searchSuggestions) ? props.searchSuggestions : [])
+const massScanProgress = ref<MassScanProgressPayload | null>(props.massScanProgress ?? null)
+const suggestionsState = ref<string[]>(Array.isArray(props.searchSuggestions) ? props.searchSuggestions : [])
+const selectedSiteIdsSet = ref<Set<number>>(new Set())
+const suggestions = computed(() => suggestionsState.value)
+const canManageSettings = computed(() => Boolean(props.canManageSettings))
+const scheduledScansEnabledLocal = ref(Boolean(props.scheduledScansEnabled ?? true))
+const isUpdatingScheduledScans = ref(false)
+const hasAnnouncedActiveRun = ref(false)
+const dashboardSnapshot = ref<DashboardSnapshot | null>(null)
 
-const queueDepth = computed<Record<string, number>>(() => props.pipelineMetrics?.queueDepth ?? {
-  'monitoring-uptime': 0,
-  'monitoring-ssl': 0,
-  'monitoring-tech': 0,
-  'monitoring-headers': 0,
-  'monitoring-alerts': 0,
+const massScanHistoryNormalized = computed<MassScanHistoryItem[]>(() => Array.isArray(props.massScanHistory) ? props.massScanHistory : [])
+
+const isMassScanRunning = computed(() => massScanProgress.value?.status === 'running')
+
+const clonePayload = <T>(value: T): T => {
+  if (value === undefined || value === null) {
+    return value
+  }
+
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+const captureDashboardSnapshot = () => {
+  dashboardSnapshot.value = {
+    sites: clonePayload(props.sites),
+    statusCounts: clonePayload(props.statusCounts),
+    diagnosticBreakdown: clonePayload(props.diagnosticBreakdown),
+    updatedAt: props.updatedAt,
+  }
+}
+
+const clearDashboardSnapshot = () => {
+  dashboardSnapshot.value = null
+}
+
+const effectiveSites = computed<Paginated<SiteItem> | SiteItem[] | undefined>(() => {
+  if (isMassScanRunning.value && dashboardSnapshot.value?.sites !== undefined) {
+    return dashboardSnapshot.value.sites
+  }
+
+  return props.sites
 })
 
-const isMassScanCoolingDown = computed(() => Boolean(props.massScanState?.isCoolingDown))
-const isMassScanRunningFromServer = computed(() => Boolean(props.massScanState?.isRunning))
-const isMassScanBusy = computed(() => isMassScanRunning.value || isMassScanRunningFromServer.value || isMassScanCoolingDown.value)
-
-const massScanButtonLabel = computed(() => {
-  if (isMassScanRunning.value || isMassScanRunningFromServer.value) {
-    return 'Escaneo masivo en curso...'
+const effectiveStatusCounts = computed<StatusCountPayload | undefined>(() => {
+  if (isMassScanRunning.value && dashboardSnapshot.value?.statusCounts !== undefined) {
+    return dashboardSnapshot.value.statusCounts
   }
 
-  if (isMassScanCoolingDown.value) {
-    return 'En enfriamiento...'
+  return props.statusCounts
+})
+
+const effectiveDiagnosticBreakdown = computed<DashboardProps['diagnosticBreakdown']>(() => {
+  if (isMassScanRunning.value && dashboardSnapshot.value?.diagnosticBreakdown !== undefined) {
+    return dashboardSnapshot.value.diagnosticBreakdown
   }
 
-  return 'Programar actualizacion masiva'
+  return props.diagnosticBreakdown
+})
+
+const effectiveUpdatedAt = computed<string | undefined>(() => {
+  if (isMassScanRunning.value && dashboardSnapshot.value?.updatedAt !== undefined) {
+    return dashboardSnapshot.value.updatedAt
+  }
+
+  return props.updatedAt
+})
+
+const showMassScanOverlay = computed(() => {
+  if (!massScanProgress.value) {
+    return false
+  }
+
+  return massScanProgress.value.status === 'running' || massScanProgress.value.remaining_tasks > 0
+})
+
+const massScanTotalTasks = computed(() => Number(massScanProgress.value?.total_tasks ?? 0))
+const massScanCompletedTasks = computed(() => Number(massScanProgress.value?.completed_tasks ?? 0))
+const massScanRemainingTasks = computed(() => Number(massScanProgress.value?.remaining_tasks ?? 0))
+const massScanProgressPct = computed(() => Number(massScanProgress.value?.progress_pct ?? 0))
+const massScanStartedAt = computed(() => {
+  const value = massScanProgress.value?.started_at
+  if (!value) {
+    return 'Sin dato'
+  }
+
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? 'Sin dato' : parsed.toLocaleString('es-MX')
+})
+
+const massScanStageRows = computed(() => {
+  const stages = massScanProgress.value?.stages
+
+  if (!stages) {
+    return []
+  }
+
+  return [
+    {
+      key: 'uptime',
+      label: 'Disponibilidad',
+      completed: Number(stages.uptime?.completed ?? 0),
+      failed: Number(stages.uptime?.failed ?? 0),
+      total: Number(stages.uptime?.total ?? 0),
+      remaining: Number(stages.uptime?.remaining ?? 0),
+      progressPct: Number(stages.uptime?.progress_pct ?? 0),
+    },
+    {
+      key: 'ssl',
+      label: 'Certificado SSL',
+      completed: Number(stages.ssl?.completed ?? 0),
+      failed: Number(stages.ssl?.failed ?? 0),
+      total: Number(stages.ssl?.total ?? 0),
+      remaining: Number(stages.ssl?.remaining ?? 0),
+      progressPct: Number(stages.ssl?.progress_pct ?? 0),
+    },
+    {
+      key: 'headers',
+      label: 'Cabeceras de seguridad',
+      completed: Number(stages.headers?.completed ?? 0),
+      failed: Number(stages.headers?.failed ?? 0),
+      total: Number(stages.headers?.total ?? 0),
+      remaining: Number(stages.headers?.remaining ?? 0),
+      progressPct: Number(stages.headers?.progress_pct ?? 0),
+    },
+    {
+      key: 'technology',
+      label: 'Tecnologías detectadas',
+      completed: Number(stages.technology?.completed ?? 0),
+      failed: Number(stages.technology?.failed ?? 0),
+      total: Number(stages.technology?.total ?? 0),
+      remaining: Number(stages.technology?.remaining ?? 0),
+      progressPct: Number(stages.technology?.progress_pct ?? 0),
+    },
+  ]
 })
 
 const normalizedStatusCounts = computed<StatusCounts>(() => ({
-  UP: Number(props.statusCounts?.UP ?? props.statusCounts?.up ?? 0),
-  DEGRADED: Number(props.statusCounts?.DEGRADED ?? props.statusCounts?.degraded ?? 0),
-  DOWN: Number(props.statusCounts?.DOWN ?? props.statusCounts?.down ?? 0),
-  UNKNOWN: Number(props.statusCounts?.UNKNOWN ?? props.statusCounts?.unknown ?? 0),
+  UP: Number(effectiveStatusCounts.value?.UP ?? effectiveStatusCounts.value?.up ?? 0),
+  DEGRADED: Number(effectiveStatusCounts.value?.DEGRADED ?? effectiveStatusCounts.value?.degraded ?? 0),
+  DOWN: Number(effectiveStatusCounts.value?.DOWN ?? effectiveStatusCounts.value?.down ?? 0),
+  UNKNOWN: Number(effectiveStatusCounts.value?.UNKNOWN ?? effectiveStatusCounts.value?.unknown ?? 0),
 }))
 
 const normalizedSites = computed<SiteItem[]>(() => {
-  if (Array.isArray(props.sites)) {
-    return props.sites
+  if (Array.isArray(effectiveSites.value)) {
+    return effectiveSites.value
   }
 
-  return props.sites?.data ?? []
+  return effectiveSites.value?.data ?? []
 })
 
-const currentPage = computed(() => Array.isArray(props.sites) ? 1 : (props.sites?.current_page ?? 1))
-const lastPage = computed(() => Array.isArray(props.sites) ? 1 : Math.max(1, props.sites?.last_page ?? 1))
-const currentPerPage = computed(() => Array.isArray(props.sites) ? normalizedSites.value.length : (props.sites?.per_page ?? DEFAULT_PER_PAGE))
-const totalSites = computed(() => Array.isArray(props.sites) ? normalizedSites.value.length : (props.sites?.total ?? normalizedSites.value.length))
+const visibleSiteIds = computed(() => normalizedSites.value.map((site) => site.id))
+
+const selectedSiteIds = computed(() => Array.from(selectedSiteIdsSet.value))
+
+const isAllVisibleSelected = computed(() => {
+  if (visibleSiteIds.value.length === 0) {
+    return false
+  }
+
+  return visibleSiteIds.value.every((siteId) => selectedSiteIdsSet.value.has(siteId))
+})
+
+const isSomeVisibleSelected = computed(() => visibleSiteIds.value.some((siteId) => selectedSiteIdsSet.value.has(siteId)))
+
+const currentPage = computed(() => Array.isArray(effectiveSites.value) ? 1 : (effectiveSites.value?.current_page ?? 1))
+const lastPage = computed(() => Array.isArray(effectiveSites.value) ? 1 : Math.max(1, effectiveSites.value?.last_page ?? 1))
+const currentPerPage = computed(() => Array.isArray(effectiveSites.value) ? normalizedSites.value.length : (effectiveSites.value?.per_page ?? DEFAULT_PER_PAGE))
+const totalSites = computed(() => Array.isArray(effectiveSites.value) ? normalizedSites.value.length : (effectiveSites.value?.total ?? normalizedSites.value.length))
 
 const firstVisibleItem = computed(() => {
   if (totalSites.value === 0) {
@@ -501,33 +637,13 @@ const lastVisibleItem = computed(() => {
 })
 
 const formattedUpdatedAt = computed(() => {
-  if (!props.updatedAt) {
+  if (!effectiveUpdatedAt.value) {
     return 'Sin dato'
   }
 
-  const parsed = new Date(props.updatedAt)
-  return Number.isNaN(parsed.getTime()) ? 'Sin dato' : formatDateTimeDdMmYyyy(parsed)
+  const parsed = new Date(effectiveUpdatedAt.value)
+  return Number.isNaN(parsed.getTime()) ? 'Sin dato' : parsed.toLocaleString('es-MX')
 })
-
-const formatDateTimeDdMmYyyy = (date: Date) => {
-  const dd = String(date.getDate()).padStart(2, '0')
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const yyyy = String(date.getFullYear())
-  const hh = String(date.getHours()).padStart(2, '0')
-  const min = String(date.getMinutes()).padStart(2, '0')
-  const ss = String(date.getSeconds()).padStart(2, '0')
-
-  return `${dd}-${mm}-${yyyy} ${hh}:${min}:${ss}`
-}
-
-const formatMaybeDate = (value: string | null) => {
-  if (!value) {
-    return 'Sin dato'
-  }
-
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? 'Sin dato' : formatDateTimeDdMmYyyy(parsed)
-}
 
 const resolveStatusCode = (site: SiteItem): 'up' | 'down' | 'degraded' | 'unknown' => {
   const diagnosisBucket = (site.diagnostic_bucket ?? '').toString().trim().toLowerCase()
@@ -563,64 +679,12 @@ const statusLabel = (status: ReturnType<typeof resolveStatusCode>) => {
   if (status === 'up') return 'OPERATIVO'
   if (status === 'degraded') return 'CON INCIDENCIAS'
   if (status === 'down') return 'NO RESPONDE'
-  return 'EN LA COLA'
-}
-
-const labelize = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
-
-const registerSite = () => {
-  if (isRegisteringSite.value) {
-    return
-  }
-
-  if (registerName.value.trim() === '' || registerDomain.value.trim() === '') {
-    actionMessage.value = 'Nombre y dominio son obligatorios para registrar un nuevo sitio.'
-    return
-  }
-
-  isRegisteringSite.value = true
-
-  router.post('/monitoring/dashboard/register-site', {
-    name: registerName.value.trim(),
-    domain: registerDomain.value.trim().toLowerCase(),
-    entity: registerEntity.value.trim() || null,
-    notes: registerNotes.value.trim() || null,
-  }, {
-    preserveScroll: true,
-    onFinish: () => {
-      isRegisteringSite.value = false
-    },
-    onSuccess: () => {
-      showRegisterForm.value = false
-      registerName.value = ''
-      registerDomain.value = ''
-      registerEntity.value = ''
-      registerNotes.value = ''
-      actionMessage.value = 'Sitio registrado correctamente y agregado al monitoreo.'
-    },
-  })
+  return 'SIN ACTUALIZAR'
 }
 
 const fallbackSiteName = (site: SiteItem) => site.name?.trim() || site.domain?.trim() || `Sitio #${site.id}`
 
 const fallbackDomain = (domain: string | null) => domain?.trim() || 'Sin dominio'
-
-const displayDomain = (site: SiteItem) => {
-  const domain = (site.domain ?? '').trim()
-  const isIpDomain = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(domain)
-
-  if (isIpDomain) {
-    const url = (site.url ?? '').trim()
-    return url !== '' ? url.replace(/^https?:\/\//i, '') : domain
-  }
-
-  if (domain !== '') {
-    return domain
-  }
-
-  const url = (site.url ?? '').trim()
-  return url !== '' ? url.replace(/^https?:\/\//i, '') : 'Sin dominio'
-}
 
 const safeSiteUrl = (site: SiteItem) => {
   const candidate = site.url?.trim() || (site.domain ? `https://${site.domain}` : '')
@@ -649,22 +713,13 @@ const buildDashboardQuery = (page = 1) => {
 }
 
 const setStatusFilter = (status: 'up' | 'degraded' | 'down' | 'unknown') => {
-  localStatus.value = localStatus.value === status ? 'all' : status
+  if (isMassScanRunning.value) {
+    actionMessage.value = 'Snapshot estable activo. Espera a que termine la corrida para aplicar filtros.'
+    return
+  }
+
+  localStatus.value = status
   router.get('/monitoring/dashboard', buildDashboardQuery(1), {
-    preserveState: true,
-    preserveScroll: true,
-    replace: true,
-  })
-}
-
-const showAllSites = () => {
-  localSearch.value = ''
-  localStatus.value = 'all'
-
-  router.get('/monitoring/dashboard', {
-    page: 1,
-    per_page: currentPerPage.value || DEFAULT_PER_PAGE,
-  }, {
     preserveState: true,
     preserveScroll: true,
     replace: true,
@@ -672,38 +727,48 @@ const showAllSites = () => {
 }
 
 const refreshDashboard = () => {
+  if (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement) {
+    return
+  }
+
   router.get('/monitoring/dashboard', buildDashboardQuery(currentPage.value), {
     preserveState: true,
     preserveScroll: true,
     replace: true,
-    only: ['sites', 'statusCounts', 'diagnosticBreakdown', 'pipelineMetrics', 'massScanState', 'diagnosticHistory', 'updatedAt'],
+    only: ['sites', 'statusCounts', 'diagnosticBreakdown', 'pipelineMetrics', 'massScanProgress', 'massScanHistory', 'scheduledScansEnabled', 'updatedAt'],
   })
 }
 
 const applySearch = () => {
-  router.get('/monitoring/dashboard', buildDashboardQuery(1), {
-    preserveState: true,
-    preserveScroll: true,
-    replace: true,
-  })
-}
+  if (isMassScanRunning.value) {
+    actionMessage.value = 'Snapshot estable activo. Espera a que termine la corrida para buscar.'
+    return
+  }
 
-const applySearchDebounced = () => {
   router.get('/monitoring/dashboard', buildDashboardQuery(1), {
     preserveState: true,
     preserveScroll: true,
     replace: true,
-    only: ['sites', 'statusCounts', 'diagnosticBreakdown', 'pipelineMetrics', 'massScanState', 'diagnosticHistory', 'updatedAt'],
   })
 }
 
 const clearSearch = () => {
+  if (isMassScanRunning.value) {
+    actionMessage.value = 'Snapshot estable activo. Espera a que termine la corrida para limpiar filtros.'
+    return
+  }
+
   localSearch.value = ''
   localStatus.value = 'all'
   applySearch()
 }
 
 const goToPage = (page: number) => {
+  if (isMassScanRunning.value) {
+    actionMessage.value = 'Snapshot estable activo. La paginación se habilita al finalizar la corrida.'
+    return
+  }
+
   if (page < 1 || page > lastPage.value) {
     return
   }
@@ -712,7 +777,7 @@ const goToPage = (page: number) => {
     preserveState: true,
     preserveScroll: true,
     replace: true,
-    only: ['sites', 'statusCounts', 'diagnosticBreakdown', 'pipelineMetrics', 'massScanState', 'diagnosticHistory', 'updatedAt'],
+    only: ['sites', 'statusCounts', 'diagnosticBreakdown', 'pipelineMetrics', 'massScanProgress', 'massScanHistory', 'scheduledScansEnabled', 'updatedAt'],
   })
 }
 
@@ -720,67 +785,400 @@ const openSiteDetail = (siteId: number) => {
   router.visit(`/monitoring/sites/${siteId}/detail`)
 }
 
+const isSiteSelected = (siteId: number) => selectedSiteIdsSet.value.has(siteId)
+
+const toggleSelectedSite = (siteId: number) => {
+  const next = new Set(selectedSiteIdsSet.value)
+
+  if (next.has(siteId)) {
+    next.delete(siteId)
+  } else {
+    next.add(siteId)
+  }
+
+  selectedSiteIdsSet.value = next
+}
+
+const toggleSelectVisible = () => {
+  const next = new Set(selectedSiteIdsSet.value)
+
+  if (isAllVisibleSelected.value) {
+    for (const siteId of visibleSiteIds.value) {
+      next.delete(siteId)
+    }
+  } else {
+    for (const siteId of visibleSiteIds.value) {
+      next.add(siteId)
+    }
+  }
+
+  selectedSiteIdsSet.value = next
+}
+
 const scanSingleSite = (siteId: number) => {
-  actionMessage.value = 'Reescaneo del sitio en proceso...'
-  router.post(`/monitoring/sites/${siteId}/scan`, {}, {
-    preserveScroll: true,
-    onSuccess: () => {
-      actionMessage.value = 'Reescaneo del sitio completado.'
-      refreshDashboard()
-    },
-    onError: () => {
-      actionMessage.value = 'No se pudo reescanear el sitio.'
-    },
-  })
+  if (isMassScanRunning.value) {
+    actionMessage.value = 'Ya existe un escaneo en curso. Espera a que finalice.'
+    return
+  }
+
+  actionMessage.value = 'Iniciando escaneo del sitio seleccionado...'
+  void startSingleSiteScanRequest(siteId)
 }
 
 const scanAllSites = () => {
-  if (isMassScanBusy.value) {
-    if (isMassScanCoolingDown.value) {
-      actionMessage.value = 'Escaneo masivo temporalmente bloqueado para evitar saturacion. Intenta de nuevo al terminar el enfriamiento.'
+  if (isMassScanRunning.value) {
+    actionMessage.value = 'Ya existe un escaneo masivo en curso. Espera a que termine para iniciar otro.'
+    return
+  }
+
+  actionMessage.value = 'Validando disponibilidad para lanzar escaneo masivo...'
+  void startMassScanRequest()
+}
+
+const scanSelectedSites = () => {
+  if (selectedSiteIds.value.length === 0) {
+    actionMessage.value = 'Selecciona al menos un sitio para escanear.'
+    return
+  }
+
+  if (isMassScanRunning.value) {
+    actionMessage.value = 'Ya existe un escaneo en curso. Espera a que finalice.'
+    return
+  }
+
+  actionMessage.value = `Iniciando escaneo de ${selectedSiteIds.value.length} sitio(s) seleccionados...`
+  void startSelectedScanRequest()
+}
+
+const getCsrfToken = () => {
+  const meta = document.querySelector('meta[name="csrf-token"]')
+  return meta instanceof HTMLMetaElement ? (meta.content || '') : ''
+}
+
+const startMassScanRequest = async () => {
+  try {
+    const response = await fetch('/monitoring/dashboard/scan-all', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': getCsrfToken(),
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({}),
+    })
+
+    if (response.status === 419) {
+      actionMessage.value = 'La sesión expiró. Recarga la página para continuar.'
       return
     }
 
-    actionMessage.value = 'Ya hay un escaneo masivo en curso. Espera a que termine.'
-    return
-  }
+    if (!response.ok) {
+      actionMessage.value = 'No se pudo iniciar el escaneo masivo. Intenta nuevamente.'
+      return
+    }
 
-  isMassScanRunning.value = true
-  actionMessage.value = 'Iniciando reescaneo masivo. Este proceso puede tardar algunos minutos...'
-  router.post('/monitoring/dashboard/scan-all', {}, {
-    preserveScroll: true,
-    onSuccess: () => {
-      actionMessage.value = 'Reescaneo masivo iniciado. El sistema esta despachando los sitios en segundo plano.'
-      isMassScanRunning.value = false
-      refreshDashboard()
-    },
-    onError: () => {
-      actionMessage.value = 'No se pudo programar la actualizacion masiva.'
-      isMassScanRunning.value = false
-    },
-    onFinish: () => {
-      isMassScanRunning.value = false
-    },
-  })
+    const payload = await response.json() as {
+      started?: boolean
+      status?: string
+      message?: string
+      progress?: MassScanProgressPayload | null
+      redirect_url?: string | null
+    }
+
+    if (payload.message) {
+      actionMessage.value = payload.message
+    }
+
+    if (payload.progress) {
+      massScanProgress.value = payload.progress
+    }
+
+    if (payload.started) {
+      hasAnnouncedActiveRun.value = false
+      if (typeof payload.redirect_url === 'string' && payload.redirect_url !== '') {
+        router.visit(payload.redirect_url)
+        return
+      }
+
+      void fetchMassScanProgress()
+    } else if (payload.status === 'already_running' && payload.progress) {
+      hasAnnouncedActiveRun.value = true
+      actionMessage.value = 'Ya existe un escaneo en curso. Mostrando el progreso actual.'
+
+      if (typeof payload.redirect_url === 'string' && payload.redirect_url !== '') {
+        router.visit(payload.redirect_url)
+        return
+      }
+    }
+
+    refreshDashboard()
+  } catch {
+    actionMessage.value = 'No se pudo iniciar el escaneo masivo por un error de red.'
+  }
 }
 
-const runDiagnostic = () => {
-  if (isRunningDiagnostic.value) {
+const startSelectedScanRequest = async () => {
+  try {
+    const response = await fetch('/monitoring/dashboard/scan-selected', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': getCsrfToken(),
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({ site_ids: selectedSiteIds.value }),
+    })
+
+    if (response.status === 419) {
+      actionMessage.value = 'La sesión expiró. Recarga la página para continuar.'
+      return
+    }
+
+    if (!response.ok) {
+      actionMessage.value = 'No se pudo iniciar el escaneo de sitios seleccionados.'
+      return
+    }
+
+    const payload = await response.json() as {
+      started?: boolean
+      status?: string
+      message?: string
+      progress?: MassScanProgressPayload | null
+      redirect_url?: string | null
+    }
+
+    if (payload.message) {
+      actionMessage.value = payload.message
+    }
+
+    if (payload.progress) {
+      massScanProgress.value = payload.progress
+    }
+
+    if (payload.started || payload.status === 'already_running') {
+      if (typeof payload.redirect_url === 'string' && payload.redirect_url !== '') {
+        router.visit(payload.redirect_url)
+        return
+      }
+    }
+  } catch {
+    actionMessage.value = 'No se pudo iniciar el escaneo de sitios seleccionados por un error de red.'
+  }
+}
+
+const startSingleSiteScanRequest = async (siteId: number) => {
+  try {
+    const response = await fetch(`/monitoring/sites/${siteId}/scan`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': getCsrfToken(),
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({}),
+    })
+
+    if (response.status === 419) {
+      actionMessage.value = 'La sesión expiró. Recarga la página para continuar.'
+      return
+    }
+
+    if (!response.ok) {
+      actionMessage.value = 'No se pudo iniciar el escaneo del sitio.'
+      return
+    }
+
+    const payload = await response.json() as {
+      started?: boolean
+      status?: string
+      message?: string
+      progress?: MassScanProgressPayload | null
+      redirect_url?: string | null
+    }
+
+    if (payload.message) {
+      actionMessage.value = payload.message
+    }
+
+    if (payload.progress) {
+      massScanProgress.value = payload.progress
+    }
+
+    if (payload.started || payload.status === 'already_running') {
+      if (typeof payload.redirect_url === 'string' && payload.redirect_url !== '') {
+        router.visit(payload.redirect_url)
+        return
+      }
+    }
+  } catch {
+    actionMessage.value = 'No se pudo iniciar el escaneo del sitio por un error de red.'
+  }
+}
+
+const fetchMassScanProgress = async () => {
+  try {
+    const response = await fetch('/monitoring/dashboard/scan-progress', {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      credentials: 'same-origin',
+    })
+
+    if (!response.ok) {
+      return
+    }
+
+    const payload = await response.json() as { active?: boolean; progress?: MassScanProgressPayload | null }
+
+    if (!payload.progress) {
+      const hadRun = massScanProgress.value !== null
+      massScanProgress.value = null
+
+      if (hadRun) {
+        hasAnnouncedActiveRun.value = false
+        refreshDashboard()
+      }
+
+      return
+    }
+
+    const previousStatus = massScanProgress.value?.status ?? null
+    massScanProgress.value = payload.progress
+
+    if (payload.progress.status === 'running' && !hasAnnouncedActiveRun.value) {
+      actionMessage.value = 'Escaneo en ejecución. Redirigiendo a la página de progreso...'
+      hasAnnouncedActiveRun.value = true
+
+      if (payload.progress.run_id) {
+        router.visit(`/monitoring/scans/${payload.progress.run_id}`)
+        return
+      }
+    }
+
+    if (payload.progress.status === 'completed_ok') {
+      actionMessage.value = 'Escaneo masivo completado correctamente. Los datos ya fueron revalidados.'
+    } else if (payload.progress.status === 'completed_with_errors') {
+      actionMessage.value = 'Escaneo masivo completado con errores parciales. Revisa el histórico para detalles.'
+    } else if (payload.progress.status === 'incomplete') {
+      actionMessage.value = 'Escaneo masivo marcado como incompleto por inactividad del proceso.'
+    }
+
+    if (previousStatus === 'running' && payload.progress.status !== 'running') {
+      hasAnnouncedActiveRun.value = false
+      refreshDashboard()
+    }
+  } catch {
+    // El dashboard sigue operativo aunque falle la consulta de progreso.
+  }
+}
+
+const fetchSearchSuggestions = async (query: string) => {
+  try {
+    const params = new URLSearchParams()
+    if (query.trim() !== '') {
+      params.set('q', query.trim())
+    }
+
+    const response = await fetch(`/monitoring/dashboard/search-suggestions?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      credentials: 'same-origin',
+    })
+
+    if (!response.ok) {
+      return
+    }
+
+    const payload = await response.json() as { items?: string[] }
+    suggestionsState.value = Array.isArray(payload.items) ? payload.items : []
+  } catch {
+    // El autocompletado es auxiliar; no bloquea flujo principal.
+  }
+}
+
+const toggleScheduledScans = () => {
+  if (isUpdatingScheduledScans.value) {
     return
   }
 
-  isRunningDiagnostic.value = true
-  actionMessage.value = 'Ejecutando diagnostico operativo para destrabar colas...'
+  void submitScheduledScansToggle()
+}
 
-  router.post('/monitoring/dashboard/diagnostic', {}, {
-    preserveScroll: true,
-    onFinish: () => {
-      isRunningDiagnostic.value = false
-    },
-    onError: () => {
-      actionMessage.value = 'No se pudo ejecutar el diagnostico administrativo.'
-    },
-  })
+const submitScheduledScansToggle = async () => {
+  isUpdatingScheduledScans.value = true
+  const nextValue = !scheduledScansEnabledLocal.value
+
+  try {
+    const response = await fetch('/monitoring/dashboard/scheduled-scans', {
+      method: 'PATCH',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': getCsrfToken(),
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({ enabled: nextValue }),
+    })
+
+    if (response.status === 403) {
+      actionMessage.value = 'No tienes permisos para cambiar esta configuración.'
+      return
+    }
+
+    if (response.status === 419) {
+      actionMessage.value = 'La sesión expiró. Recarga la página para continuar.'
+      return
+    }
+
+    if (!response.ok) {
+      actionMessage.value = 'No se pudo actualizar la configuración de escaneos programados.'
+      return
+    }
+
+    const payload = await response.json() as { ok?: boolean; enabled?: boolean; message?: string }
+    scheduledScansEnabledLocal.value = Boolean(payload.enabled)
+    actionMessage.value = payload.message
+      ?? (scheduledScansEnabledLocal.value
+        ? 'Escaneos programados activados correctamente.'
+        : 'Escaneos programados desactivados. Solo queda el modo manual.')
+
+    refreshDashboard()
+  } catch {
+    actionMessage.value = 'No se pudo actualizar la configuración de escaneos programados.'
+  } finally {
+    isUpdatingScheduledScans.value = false
+  }
+}
+
+const formatDateTime = (value: string | null) => {
+  if (!value) {
+    return '-'
+  }
+
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString('es-MX')
+}
+
+const massScanStatusLabel = (status: string) => {
+  if (status === 'running') return 'En ejecución'
+  if (status === 'completed_ok') return 'Finalizado OK'
+  if (status === 'completed_with_errors') return 'Finalizado con errores'
+  if (status === 'incomplete') return 'Incompleto'
+  return 'Desconocido'
+}
+
+const massScanStatusClass = (status: string) => {
+  if (status === 'running') return 'bg-cyan-500/15 text-cyan-200'
+  if (status === 'completed_ok') return 'bg-emerald-500/15 text-emerald-200'
+  if (status === 'completed_with_errors') return 'bg-amber-500/15 text-amber-200'
+  if (status === 'incomplete') return 'bg-rose-500/15 text-rose-200'
+  return 'bg-slate-700 text-slate-200'
 }
 
 const formatCheckTime = (value: string | null, status: ReturnType<typeof resolveStatusCode>) => {
@@ -789,7 +1187,7 @@ const formatCheckTime = (value: string | null, status: ReturnType<typeof resolve
   }
 
   const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? 'Nunca' : formatDateTimeDdMmYyyy(parsed)
+  return Number.isNaN(parsed.getTime()) ? 'Nunca' : parsed.toLocaleString('es-MX')
 }
 
 const statusPieSeries = computed(() => [
@@ -800,7 +1198,7 @@ const statusPieSeries = computed(() => [
 ])
 
 const statusPieOptions = computed<ApexOptions>(() => ({
-  labels: ['Operativos', 'Con incidencias', 'No responde', 'En la cola'],
+  labels: ['Operativos', 'Con incidencias', 'No responde', 'Sin actualizar'],
   legend: {
     position: 'bottom',
     labels: { colors: '#CBD5E1' },
@@ -816,12 +1214,12 @@ const statusPieOptions = computed<ApexOptions>(() => ({
 const diagnosticBarSeries = computed(() => [{
   name: 'Sitios',
   data: [
-    Number(props.diagnosticBreakdown?.operativo ?? 0),
-    Number(props.diagnosticBreakdown?.respuesta_lenta ?? 0),
-    Number(props.diagnosticBreakdown?.responde_con_errores ?? 0),
-    Number(props.diagnosticBreakdown?.inestable ?? 0),
-    Number(props.diagnosticBreakdown?.no_responde ?? 0),
-    Number(props.diagnosticBreakdown?.sin_actualizar ?? 0),
+    Number(effectiveDiagnosticBreakdown.value?.operativo ?? 0),
+    Number(effectiveDiagnosticBreakdown.value?.respuesta_lenta ?? 0),
+    Number(effectiveDiagnosticBreakdown.value?.responde_con_errores ?? 0),
+    Number(effectiveDiagnosticBreakdown.value?.inestable ?? 0),
+    Number(effectiveDiagnosticBreakdown.value?.no_responde ?? 0),
+    Number(effectiveDiagnosticBreakdown.value?.sin_actualizar ?? 0),
   ],
 }])
 
@@ -830,23 +1228,10 @@ const diagnosticBarOptions = computed<ApexOptions>(() => ({
     type: 'bar',
     toolbar: { show: false },
     foreColor: '#CBD5E1',
-    events: {
-      dataPointSelection: (_event: unknown, _chartContext: unknown, config: { dataPointIndex?: number }) => {
-        const bucketByIndex = ['operativo', 'respuesta_lenta', 'responde_con_errores', 'inestable', 'no_responde', 'sin_actualizar']
-        const index = config?.dataPointIndex ?? -1
-        const bucket = bucketByIndex[index]
-
-        if (!bucket) {
-          return
-        }
-
-        router.visit(`/monitoring/diagnostic/${bucket}`)
-      },
-    },
   },
   colors: ['#06B6D4'],
   xaxis: {
-    categories: ['Operativos', 'Respuesta lenta', 'Con errores', 'Inestables', 'No responde', 'En la cola'],
+    categories: ['Operativos', 'Respuesta lenta', 'Con errores', 'Inestables', 'No responde', 'Sin actualizar'],
     labels: { style: { colors: '#CBD5E1' } },
   },
   yaxis: {
@@ -869,6 +1254,7 @@ type MonitoringEchoChannel = {
 
 let channel: MonitoringEchoChannel | null = null
 let pollingInterval: ReturnType<typeof setInterval> | null = null
+let massScanPollingInterval: ReturnType<typeof setInterval> | null = null
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 watch(localSearch, (value, previousValue) => {
@@ -881,20 +1267,56 @@ watch(localSearch, (value, previousValue) => {
   }
 
   searchDebounceTimer = setTimeout(() => {
-    applySearchDebounced()
+    void fetchSearchSuggestions(value)
   }, 300)
 })
 
+watch(() => props.scheduledScansEnabled, (value) => {
+  if (typeof value === 'boolean') {
+    scheduledScansEnabledLocal.value = value
+  }
+})
+
+watch(normalizedSites, () => {
+  const visible = new Set(normalizedSites.value.map((site) => site.id))
+  const next = new Set<number>()
+
+  for (const siteId of selectedSiteIdsSet.value) {
+    if (visible.has(siteId)) {
+      next.add(siteId)
+    }
+  }
+
+  selectedSiteIdsSet.value = next
+})
+
+watch(isMassScanRunning, (running, previousRunning) => {
+  if (running && !previousRunning) {
+    captureDashboardSnapshot()
+    return
+  }
+
+  if (!running && previousRunning) {
+    clearDashboardSnapshot()
+  }
+})
+
 onMounted(() => {
-  if (isMassScanCoolingDown.value) {
-    actionMessage.value = 'Escaneo masivo temporalmente bloqueado para proteger la estabilidad del sistema.'
+  if (isMassScanRunning.value) {
+    captureDashboardSnapshot()
   }
 
-  if (localStatus.value !== 'all' && normalizedSites.value.length === 0) {
-    showAllSites()
-  }
+  pollingInterval = setInterval(() => {
+    if (!isMassScanRunning.value) {
+      refreshDashboard()
+    }
+  }, 15000)
+  massScanPollingInterval = setInterval(() => {
+    void fetchMassScanProgress()
+  }, 2500)
 
-  pollingInterval = setInterval(refreshDashboard, props.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS)
+  void fetchMassScanProgress()
+  void fetchSearchSuggestions(localSearch.value)
 
   const w = window as Window & {
     Echo?: {
@@ -908,7 +1330,9 @@ onMounted(() => {
 
   channel = w.Echo.channel('monitoring.sites')
   channel.listen('.site.status.changed', () => {
-    refreshDashboard()
+    if (!isMassScanRunning.value) {
+      refreshDashboard()
+    }
   })
 })
 
@@ -916,6 +1340,11 @@ onBeforeUnmount(() => {
   if (pollingInterval) {
     clearInterval(pollingInterval)
     pollingInterval = null
+  }
+
+  if (massScanPollingInterval) {
+    clearInterval(massScanPollingInterval)
+    massScanPollingInterval = null
   }
 
   channel?.stopListening('.site.status.changed')

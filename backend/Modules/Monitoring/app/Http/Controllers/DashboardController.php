@@ -8,24 +8,27 @@ use App\Contracts\Repositories\AlertRepositoryInterface;
 use App\Contracts\Repositories\SiteCheckRepositoryInterface;
 use App\Contracts\Repositories\SiteRepositoryInterface;
 use App\Http\Controllers\Controller;
+use App\Models\MonitoringMassScanRun;
+use App\Models\Setting;
 use App\Models\SiteGroup;
 use App\Models\Site;
 use App\Models\SiteCheck;
-use App\Support\AssetIntelligenceSchema;
+use App\Models\SiteTechnology;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redis;
+use Modules\Monitoring\Jobs\DispatchMassScanRunJob;
 use Modules\Monitoring\Jobs\RunHeadCheckJob;
+use Modules\Monitoring\Jobs\RunSecurityHeadersCheckJob;
+use Modules\Monitoring\Jobs\RunSslCheckJob;
+use Modules\Monitoring\Jobs\RunTechnologyScanJob;
+use Modules\Monitoring\Support\MassScanProgress;
 use Inertia\Inertia;
 use Inertia\Response;
-use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Str;
-use Modules\Monitoring\Support\MonitoringPermissionMatrix;
 
 final class DashboardController extends Controller
 {
@@ -33,28 +36,19 @@ final class DashboardController extends Controller
 
     private const DASHBOARD_MAX_PER_PAGE = 500;
 
-    private const DASHBOARD_REFRESH_INTERVAL_MS = 15000;
-
-    private const MASS_SCAN_RUNNING_KEY = 'monitoring:manual-scan-all:running';
-
-    private const MASS_SCAN_COOLDOWN_UNTIL_KEY = 'monitoring:manual-scan-all:cooldown-until';
-
-    private const MASS_SCAN_LAST_TRIGGERED_AT_KEY = 'monitoring:manual-scan-all:last-triggered-at';
-
-    private const MASS_SCAN_RUNNING_MINUTES = 10;
-
-    private const MASS_SCAN_COOLDOWN_MINUTES = 30;
+    private const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
 
     public function __construct(
         private readonly SiteRepositoryInterface $siteRepository,
         private readonly SiteCheckRepositoryInterface $siteCheckRepository,
         private readonly AlertRepositoryInterface $alertRepository,
-        private readonly AssetIntelligenceSchema $assetSchema,
     ) {
     }
 
     public function index(Request $request): Response
     {
+        $this->warmTelemetryPipeline();
+
         $filters = [
             'status' => $request->string('status')->toString() ?: 'all',
             'group_id' => $request->integer('group_id') ?: null,
@@ -79,190 +73,13 @@ final class DashboardController extends Controller
             'searchSuggestions' => $this->searchSuggestions(),
             'pipelineMetrics' => $this->pipelineMetrics(),
             'sites' => $sites,
-            'massScanState' => $this->massScanState(),
-            'isAdmin' => $this->isAdminUser($request),
-            'diagnosticResult' => session('diagnosticResult'),
-            'diagnosticHistory' => $this->isAdminUser($request) ? $this->diagnosticHistory() : [],
+            'massScanProgress' => MassScanProgress::getCurrent(),
+            'massScanHistory' => $this->massScanHistory(),
+            'scheduledScansEnabled' => $this->scheduledScansEnabled(),
+            'canManageSettings' => (bool) $request->user()?->can('monitoring.manage_settings'),
             'refreshIntervalMs' => self::DASHBOARD_REFRESH_INTERVAL_MS,
             'updatedAt' => now()->toIso8601String(),
         ]);
-    }
-
-    public function runDiagnostic(Request $request): RedirectResponse
-    {
-        $steps = [];
-        $issues = [];
-        $before = $this->queueDepthSnapshot();
-
-        try {
-            Redis::ping();
-            $steps[] = 'Conectividad con Redis validada.';
-        } catch (\Throwable) {
-            $issues[] = 'No hay conexion estable con Redis.';
-        }
-
-        $clearedKeys = [
-            self::MASS_SCAN_RUNNING_KEY,
-            'monitoring:single-site-rescan:pause',
-            'monitoring:single-site-rescan:site_id',
-        ];
-
-        foreach ($clearedKeys as $cacheKey) {
-            if (Cache::has($cacheKey)) {
-                Cache::forget($cacheKey);
-                $steps[] = sprintf('Se limpio candado operativo: %s.', $cacheKey);
-            }
-        }
-
-        try {
-            Artisan::call('queue:restart');
-            $steps[] = 'Se solicito reinicio limpio de workers de cola.';
-        } catch (\Throwable) {
-            $issues[] = 'No se pudo reiniciar workers de cola.';
-        }
-
-        try {
-            Artisan::call('horizon:terminate');
-            $steps[] = 'Se solicito reinicio controlado de Horizon para liberar bloqueos.';
-        } catch (\Throwable) {
-            $issues[] = 'No se pudo reiniciar Horizon.';
-        }
-
-        $limit = max(
-            1,
-            (int) Site::query()->where('is_active', true)->where('is_monitored', true)->count()
-        );
-
-        try {
-            Artisan::call('monitoring:dispatch-head-checks', [
-                '--limit' => $limit,
-                '--chunk' => 50,
-                '--stagger' => 0,
-            ]);
-            $steps[] = 'Se forzo un despacho inmediato de checks de disponibilidad.';
-        } catch (\Throwable) {
-            $issues[] = 'No se pudo despachar checks inmediatos de disponibilidad.';
-        }
-
-        $failedJobs = 0;
-        try {
-            $failedJobs = (int) DB::table('failed_jobs')->count();
-            if ($failedJobs > 0) {
-                $steps[] = sprintf('Se detectaron %d jobs fallidos para revision administrativa.', $failedJobs);
-            }
-        } catch (\Throwable) {
-            $issues[] = 'No se pudo consultar la tabla de jobs fallidos.';
-        }
-
-        $after = $this->queueDepthSnapshot();
-
-        $summary = sprintf(
-            'Antes: uptime %d, ssl %d, tech %d, headers %d. Ahora: uptime %d, ssl %d, tech %d, headers %d.',
-            (int) ($before['monitoring-uptime'] ?? 0),
-            (int) ($before['monitoring-ssl'] ?? 0),
-            (int) ($before['monitoring-tech'] ?? 0),
-            (int) ($before['monitoring-headers'] ?? 0),
-            (int) ($after['monitoring-uptime'] ?? 0),
-            (int) ($after['monitoring-ssl'] ?? 0),
-            (int) ($after['monitoring-tech'] ?? 0),
-            (int) ($after['monitoring-headers'] ?? 0),
-        );
-
-        if ($issues !== []) {
-            $reason = $this->buildColloquialFailureReason($issues);
-
-            $this->storeDiagnosticRun(
-                request: $request,
-                status: 'warning',
-                summary: $summary,
-                reason: $reason,
-                steps: $steps,
-                issues: $issues,
-                queueBefore: $before,
-                queueAfter: $after,
-            );
-
-            return back()->with('diagnosticResult', [
-                'type' => 'warning',
-                'summary' => $summary,
-                'steps' => $steps,
-                'reason' => $reason,
-            ]);
-        }
-
-        $reason = $failedJobs > 0
-            ? 'Se destrabo el flujo principal, pero hay jobs fallidos pendientes de revisar para cerrar la limpieza completa.'
-            : 'Diagnostico aplicado correctamente. El motor quedo destrabado y reactivado.';
-
-        $this->storeDiagnosticRun(
-            request: $request,
-            status: 'success',
-            summary: $summary,
-            reason: $reason,
-            steps: $steps,
-            issues: [],
-            queueBefore: $before,
-            queueAfter: $after,
-        );
-
-        return back()->with('diagnosticResult', [
-            'type' => 'success',
-            'summary' => $summary,
-            'steps' => $steps,
-            'reason' => $reason,
-        ]);
-    }
-
-    public function registerOfficialSite(Request $request): RedirectResponse
-    {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'domain' => ['required', 'string', 'max:255', 'regex:/^(?:[a-z0-9-]+\.)+udg\.mx$/i'],
-            'entity' => ['nullable', 'string', 'max:255'],
-            'notes' => ['nullable', 'string', 'max:2000'],
-        ], [
-            'domain.regex' => 'El dominio debe pertenecer a la zona .udg.mx',
-        ]);
-
-        $domain = mb_strtolower(trim((string) $validated['domain']));
-
-        $alreadyExists = Site::query()->where('domain', $domain)->exists();
-        if ($alreadyExists) {
-            return back()->with('warning', 'Ese dominio ya existe en el inventario.');
-        }
-
-        $entity = trim((string) ($validated['entity'] ?? 'Nuevos sitios UDG'));
-        if ($entity === '') {
-            $entity = 'Nuevos sitios UDG';
-        }
-
-        $group = SiteGroup::query()->firstOrCreate(
-            ['slug' => Str::slug($entity)],
-            [
-                'name' => $entity,
-                'description' => 'Sitios agregados manualmente para monitoreo operativo.',
-                'color' => '#0F766E',
-            ],
-        );
-
-        Site::query()->create([
-            'site_group_id' => (int) $group->id,
-            'name' => trim((string) $validated['name']),
-            'slug' => Str::slug(trim((string) $validated['name']) . '-' . $domain),
-            'domain' => $domain,
-            'url' => 'https://' . $domain,
-            'is_active' => true,
-            'is_monitored' => true,
-            'priority' => 2,
-            'current_status' => 'unknown',
-            'current_score' => 100,
-            'current_score_level' => 'unknown',
-            'check_interval_min' => 5,
-            'notes' => trim((string) ($validated['notes'] ?? 'Alta manual desde dashboard')),
-            'tags' => ['official', 'manual-registration'],
-        ]);
-
-        return back()->with('success', 'Sitio registrado y agregado al monitoreo.');
     }
 
     private function warmTelemetryPipeline(): void
@@ -320,135 +137,455 @@ final class DashboardController extends Controller
         ]);
     }
 
-    public function diagnosticSites(Request $request, string $bucket): Response
-    {
-        $allowedBuckets = [
-            'operativo',
-            'respuesta_lenta',
-            'responde_con_errores',
-            'inestable',
-            'no_responde',
-            'sin_actualizar',
-        ];
-
-        abort_unless(in_array($bucket, $allowedBuckets, true), 404);
-
-        $search = trim($request->string('search')->toString());
-        $perPage = max(1, min(500, $request->integer('per_page', self::DASHBOARD_DEFAULT_PER_PAGE)));
-        $page = max(1, $request->integer('page', 1));
-
-        $sites = Site::query()
-            ->with(['latestCheck', 'siteGroup', 'sslCertificate', 'cmsDetail', 'primaryServer', 'siteTechnologies.technology'])
-            ->orderByRaw('LOWER(name)')
-            ->orderBy('id')
-            ->get();
-
-        $mapped = $sites
-            ->map(fn (Site $site): array => $this->mapDashboardSite($site))
-            ->filter(static fn (array $site): bool => (string) ($site['diagnostic_bucket'] ?? '') === $bucket)
-            ->values();
-
-        if ($search !== '') {
-            $searchLower = mb_strtolower($search);
-            $mapped = $mapped
-                ->filter(static function (array $site) use ($searchLower): bool {
-                    $name = mb_strtolower((string) ($site['name'] ?? ''));
-                    $domain = mb_strtolower((string) ($site['domain'] ?? ''));
-                    $url = mb_strtolower((string) ($site['url'] ?? ''));
-
-                    return str_contains($name, $searchLower)
-                        || str_contains($domain, $searchLower)
-                        || str_contains($url, $searchLower);
-                })
-                ->values();
-        }
-
-        $total = $mapped->count();
-        $slice = $mapped->slice(($page - 1) * $perPage, $perPage)->values();
-
-        $paginator = new LengthAwarePaginator(
-            $slice,
-            $total,
-            $perPage,
-            $page,
-            [
-                'path' => route('monitoring.diagnostic.sites', ['bucket' => $bucket]),
-                'query' => array_filter([
-                    'search' => $search !== '' ? $search : null,
-                    'per_page' => $perPage,
-                ]),
-            ],
-        );
-
-        return Inertia::render('Monitoring/DiagnosticSites', [
-            'bucket' => $bucket,
-            'bucketLabel' => $this->diagnosticBucketLabel($bucket),
-            'search' => $search,
-            'sites' => $paginator,
-            'updatedAt' => now()->toIso8601String(),
-        ]);
-    }
-
     public function scanSite(int $siteId)
     {
         $site = Site::query()
             ->whereKey($siteId)
-            ->where('is_active', true)
-            ->where('is_monitored', true)
             ->first();
 
         abort_if(! $site instanceof Site, 404);
 
-        // Reescaneo prioritario: pausa temporal de despacho general para atender este sitio primero.
-        Cache::put('monitoring:single-site-rescan:pause', true, now()->addMinutes(5));
-        Cache::put('monitoring:single-site-rescan:site_id', (int) $site->id, now()->addMinutes(5));
-
-        $site->forceFill(['last_checked_at' => null])->save();
-        RunHeadCheckJob::dispatchSync((int) $site->id);
-
-        Cache::forget('monitoring:single-site-rescan:pause');
-        Cache::forget('monitoring:single-site-rescan:site_id');
-
-        return back()->with('success', 'Reescaneo prioritario completado para el sitio seleccionado. El escaneo general puede continuar.');
+        return $this->startManualScanFromIds(
+            request: request(),
+            siteIds: [(int) $site->id],
+            triggerMode: 'manual_single',
+            enforceMassInterval: false,
+            successMessage: 'Se programó el escaneo completo del sitio seleccionado.',
+        );
     }
 
-    public function scanAll(Request $request)
+    public function scanAll(Request $request): RedirectResponse|JsonResponse
     {
-        $cooldownUntil = (int) Cache::get(self::MASS_SCAN_COOLDOWN_UNTIL_KEY, 0);
-        if ($cooldownUntil > now()->timestamp) {
-            return back()->with('warning', 'El escaneo masivo esta temporalmente bloqueado para evitar saturacion. Espera a que termine el enfriamiento e intenta de nuevo.');
+        $siteIds = Site::query()
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(static fn ($siteId): int => (int) $siteId)
+            ->all();
+
+        return $this->startManualScanFromIds(
+            request: $request,
+            siteIds: $siteIds,
+            triggerMode: 'manual',
+            enforceMassInterval: true,
+            successMessage: 'Se programó una actualización masiva completa. El sistema revalida disponibilidad, SSL, cabeceras y tecnología en todos los sitios.',
+        );
+    }
+
+    public function scanSelected(Request $request): RedirectResponse|JsonResponse
+    {
+        $validated = $request->validate([
+            'site_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'site_ids.*' => ['integer', 'min:1'],
+        ]);
+
+        $siteIds = Site::query()
+            ->whereIn('id', array_values(array_unique(array_map('intval', $validated['site_ids']))))
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(static fn ($siteId): int => (int) $siteId)
+            ->all();
+
+        return $this->startManualScanFromIds(
+            request: $request,
+            siteIds: $siteIds,
+            triggerMode: 'manual_selected',
+            enforceMassInterval: false,
+            successMessage: 'Se programó el escaneo de los sitios seleccionados.',
+        );
+    }
+
+    public function scanRunView(Request $request, string $runId): Response
+    {
+        $progress = $this->resolveRunProgress($runId);
+
+        abort_if($progress === null, 404);
+
+        return Inertia::render('Monitoring/ScanProgress', [
+            'runId' => $runId,
+            'progress' => $progress,
+            'dashboardUrl' => route('monitoring.dashboard'),
+            'updatedAt' => now()->toIso8601String(),
+            'canManageSettings' => (bool) $request->user()?->can('monitoring.manage_settings'),
+        ]);
+    }
+
+    public function scanRunProgress(string $runId): JsonResponse
+    {
+        $progress = $this->resolveRunProgress($runId);
+
+        if ($progress === null) {
+            return response()->json([
+                'exists' => false,
+                'active' => false,
+                'progress' => null,
+            ]);
         }
 
-        if ((bool) Cache::get(self::MASS_SCAN_RUNNING_KEY, false) === true) {
-            return back()->with('warning', 'Ya hay un escaneo masivo en curso. Espera a que concluya.');
+        return response()->json([
+            'exists' => true,
+            'active' => ($progress['status'] ?? 'running') === 'running',
+            'progress' => $progress,
+        ]);
+    }
+
+    public function updateScheduledScans(Request $request): RedirectResponse|JsonResponse
+    {
+        $validated = $request->validate([
+            'enabled' => ['required', 'boolean'],
+        ]);
+
+        $enabled = (bool) $validated['enabled'];
+
+        Setting::set('monitoring.scheduled_scans_enabled', $enabled);
+
+        $message = $enabled
+            ? 'Escaneos programados activados. El scheduler volverá a despachar ciclos automáticos.'
+            : 'Escaneos programados desactivados. Solo quedará disponible el modo manual.';
+
+        if ($request->expectsJson() || $request->wantsJson()) {
+            return response()->json([
+                'ok' => true,
+                'enabled' => $enabled,
+                'message' => $message,
+            ]);
         }
 
-        Cache::put(self::MASS_SCAN_RUNNING_KEY, true, now()->addMinutes(self::MASS_SCAN_RUNNING_MINUTES));
-        Cache::put(self::MASS_SCAN_LAST_TRIGGERED_AT_KEY, now()->toIso8601String(), now()->addMinutes(self::MASS_SCAN_COOLDOWN_MINUTES));
-        Cache::put(self::MASS_SCAN_COOLDOWN_UNTIL_KEY, now()->addMinutes(self::MASS_SCAN_COOLDOWN_MINUTES)->timestamp, now()->addMinutes(self::MASS_SCAN_COOLDOWN_MINUTES));
+        return back()->with('success', $message);
+    }
 
-        // Solo marca sitios para que el scheduler horario procese el lote sin bloquear la UI.
-        Site::query()
-            ->where('is_active', true)
-            ->where('is_monitored', true)
-            ->update(['last_checked_at' => null]);
+    private function scanAllResponse(
+        Request $request,
+        bool $started,
+        string $status,
+        string $message,
+        ?array $progress,
+        ?string $runId = null,
+        ?string $redirectUrl = null,
+    ): RedirectResponse|JsonResponse {
+        if ($request->expectsJson() || $request->wantsJson()) {
+            return response()->json([
+                'started' => $started,
+                'status' => $status,
+                'message' => $message,
+                'progress' => $progress,
+                'run_id' => $runId,
+                'redirect_url' => $redirectUrl,
+            ]);
+        }
 
-        $limit = max(
-            1,
-            (int) Site::query()->where('is_active', true)->where('is_monitored', true)->count()
+        $flashKey = $started ? 'success' : 'warning';
+
+        return back()->with($flashKey, $message);
+    }
+
+    /**
+     * @param array<int, int> $siteIds
+     */
+    private function startManualScanFromIds(
+        Request $request,
+        array $siteIds,
+        string $triggerMode,
+        bool $enforceMassInterval,
+        string $successMessage
+    ): RedirectResponse|JsonResponse {
+        $currentProgress = MassScanProgress::getCurrent();
+
+        if (is_array($currentProgress) && ($currentProgress['status'] ?? 'running') === 'running') {
+            $currentRunId = (string) ($currentProgress['run_id'] ?? '');
+
+            return $this->scanAllResponse(
+                request: $request,
+                started: false,
+                status: 'already_running',
+                message: 'Ya hay una actualización en curso. Puedes seguirla en la página de progreso.',
+                progress: $currentProgress,
+                runId: $currentRunId !== '' ? $currentRunId : null,
+                redirectUrl: $currentRunId !== '' ? route('monitoring.scans.show', ['runId' => $currentRunId]) : null,
+            );
+        }
+
+        if (! Cache::add('monitoring:manual-scan:cooldown', now()->timestamp, 10)) {
+            return $this->scanAllResponse(
+                request: $request,
+                started: false,
+                status: 'cooldown',
+                message: 'Ya hay una actualización en proceso de arranque. Espera unos segundos e intenta de nuevo.',
+                progress: MassScanProgress::getCurrent(),
+            );
+        }
+
+        if ($siteIds === []) {
+            return $this->scanAllResponse(
+                request: $request,
+                started: false,
+                status: 'no_sites',
+                message: 'No hay sitios disponibles para ejecutar este escaneo.',
+                progress: null,
+            );
+        }
+
+        if ($enforceMassInterval) {
+            $minIntervalMinutes = max(5, (int) Setting::get('monitoring.mass_scan_min_interval_minutes', 15));
+
+            $lastRun = MonitoringMassScanRun::query()
+                ->where('trigger_mode', 'manual')
+                ->orderByDesc('started_at')
+                ->first();
+
+            if ($lastRun instanceof MonitoringMassScanRun && $lastRun->started_at !== null) {
+                $nextAllowedAt = $lastRun->started_at->addMinutes($minIntervalMinutes);
+
+                if ($nextAllowedAt->isFuture()) {
+                    return $this->scanAllResponse(
+                        request: $request,
+                        started: false,
+                        status: 'throttled',
+                        message: sprintf(
+                            'Escaneo masivo bloqueado por protección operativa. Intenta de nuevo en %d minuto(s).',
+                            now()->diffInMinutes($nextAllowedAt)
+                        ),
+                        progress: null,
+                    );
+                }
+            }
+        }
+
+        $progress = MassScanProgress::start(
+            totalSites: count($siteIds),
+            initiatedByUserId: $request->user()?->id,
+            triggerMode: $triggerMode,
         );
 
-        $batch = max(10, min(60, (int) config('monitoring.scan.default_batch_size', 40)));
+        $runId = (string) ($progress['run_id'] ?? '');
 
-        app()->terminating(function () use ($limit, $batch): void {
-            try {
-                $this->dispatchMassiveScan($limit, $batch);
-            } finally {
-                Cache::forget(self::MASS_SCAN_RUNNING_KEY);
-            }
-        });
+        if ($runId === '') {
+            return $this->scanAllResponse(
+                request: $request,
+                started: false,
+                status: 'failed_to_start',
+                message: 'No fue posible iniciar el escaneo solicitado.',
+                progress: null,
+            );
+        }
 
-        return back()->with('success', 'Reescaneo masivo iniciado. El sistema ya esta despachando los sitios en segundo plano.');
+        DispatchMassScanRunJob::dispatch($runId, $siteIds);
+
+        return $this->scanAllResponse(
+            request: $request,
+            started: true,
+            status: 'started',
+            message: $successMessage,
+            progress: MassScanProgress::get($runId),
+            runId: $runId,
+            redirectUrl: route('monitoring.scans.show', ['runId' => $runId]),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function resolveRunProgress(string $runId): ?array
+    {
+        $fromCache = MassScanProgress::get($runId);
+
+        if (is_array($fromCache)) {
+            return $fromCache;
+        }
+
+        if (! \Illuminate\Support\Facades\Schema::hasTable('monitoring_mass_scan_runs')) {
+            return null;
+        }
+
+        $run = MonitoringMassScanRun::query()->where('run_id', $runId)->first();
+
+        if (! $run instanceof MonitoringMassScanRun) {
+            return null;
+        }
+
+        $totalSites = max(0, (int) $run->total_sites);
+        $totalTasks = max(0, (int) $run->total_tasks);
+        $completedTasks = max(0, (int) $run->completed_tasks);
+        $failedTasks = max(0, (int) $run->failed_tasks);
+        $remainingTasks = max(0, $totalTasks - $completedTasks);
+        $progressPct = $totalTasks > 0 ? min(100.0, round(($completedTasks / $totalTasks) * 100, 2)) : 100.0;
+
+        return [
+            'run_id' => $run->run_id,
+            'status' => $run->status,
+            'started_at' => optional($run->started_at)?->toIso8601String() ?? now()->toIso8601String(),
+            'last_progress_at' => optional($run->last_progress_at)?->toIso8601String(),
+            'completed_at' => optional($run->completed_at)?->toIso8601String(),
+            'total_sites' => $totalSites,
+            'total_tasks' => $totalTasks,
+            'completed_tasks' => $completedTasks,
+            'failed_tasks' => $failedTasks,
+            'remaining_tasks' => $remainingTasks,
+            'progress_pct' => $progressPct,
+            'stages' => [
+                'uptime' => [
+                    'completed' => 0,
+                    'failed' => 0,
+                    'total' => $totalSites,
+                    'remaining' => $totalSites,
+                    'progress_pct' => 0,
+                ],
+                'ssl' => [
+                    'completed' => 0,
+                    'failed' => 0,
+                    'total' => $totalSites,
+                    'remaining' => $totalSites,
+                    'progress_pct' => 0,
+                ],
+                'headers' => [
+                    'completed' => 0,
+                    'failed' => 0,
+                    'total' => $totalSites,
+                    'remaining' => $totalSites,
+                    'progress_pct' => 0,
+                ],
+                'technology' => [
+                    'completed' => 0,
+                    'failed' => 0,
+                    'total' => $totalSites,
+                    'remaining' => $totalSites,
+                    'progress_pct' => 0,
+                ],
+            ],
+        ];
+    }
+
+    public function searchSuggestionsEndpoint(Request $request): JsonResponse
+    {
+        $query = trim($request->string('q')->toString());
+
+        if ($query === '') {
+            return response()->json(['items' => $this->searchSuggestions()]);
+        }
+
+        $driver = Site::query()->getConnection()->getDriverName();
+        $operator = $driver === 'pgsql' ? 'ilike' : 'like';
+
+        $items = Site::query()
+            ->where(function ($builder) use ($query, $operator): void {
+                $needle = '%' . $query . '%';
+                $builder->where('name', $operator, $needle)
+                    ->orWhere('domain', $operator, $needle);
+            })
+            ->orderByRaw('LOWER(name)')
+            ->limit(30)
+            ->get(['name', 'domain'])
+            ->flatMap(static function (Site $site): array {
+                return array_values(array_filter([
+                    trim((string) $site->name),
+                    trim((string) $site->domain),
+                ], static fn (string $value): bool => $value !== ''));
+            })
+            ->unique()
+            ->values()
+            ->all();
+
+        return response()->json(['items' => $items]);
+    }
+
+    public function scanProgress(): JsonResponse
+    {
+        $progress = MassScanProgress::getCurrent();
+
+        if ($progress === null) {
+            return response()->json([
+                'active' => false,
+                'progress' => null,
+            ]);
+        }
+
+        return response()->json([
+            'active' => ($progress['status'] ?? 'running') === 'running',
+            'progress' => $progress,
+        ]);
+    }
+
+    public function diagnosticSites(Request $request, string $bucket): Response
+    {
+        $allowedBuckets = [
+            'operativo' => 'Operativos',
+            'respuesta_lenta' => 'Respuesta lenta',
+            'responde_con_errores' => 'Responde con errores',
+            'inestable' => 'Inestables',
+            'no_responde' => 'No responde',
+            'sin_actualizar' => 'Sin actualizar',
+        ];
+
+        abort_unless(array_key_exists($bucket, $allowedBuckets), 404);
+
+        $search = trim($request->string('search')->toString());
+        $perPage = max(10, min(100, $request->integer('per_page', 50)));
+        $page = max(1, $request->integer('page', 1));
+
+        $sites = Site::query()
+            ->where('is_active', true)
+            ->where('is_monitored', true)
+            ->with(['latestCheck', 'cmsDetail', 'servers', 'sslCertificate'])
+            ->orderByRaw('LOWER(name)')
+            ->orderBy('name')
+            ->orderBy('id')
+            ->get();
+
+        $filtered = $sites
+            ->filter(function (Site $site) use ($bucket, $search): bool {
+                $status = strtolower((string) ($site->current_status ?? 'unknown'));
+                $diagnosis = $this->resolveSiteDiagnosis($site, $status, $site->latestCheck);
+
+                if (($diagnosis['bucket'] ?? 'sin_actualizar') !== $bucket) {
+                    return false;
+                }
+
+                if ($search === '') {
+                    return true;
+                }
+
+                $needle = mb_strtolower($search);
+
+                return str_contains(mb_strtolower((string) $site->name), $needle)
+                    || str_contains(mb_strtolower((string) $site->domain), $needle)
+                    || str_contains(mb_strtolower((string) $site->url), $needle);
+            })
+            ->values()
+            ->map(function (Site $site): array {
+                [$projectStatus, $comments] = $this->extractProjectStatusAndComments((string) ($site->notes ?? ''));
+                $sslCertificate = $site->sslCertificate;
+
+                return [
+                    'id' => (int) $site->id,
+                    'name' => (string) $site->name,
+                    'domain' => (string) $site->domain,
+                    'url' => (string) $site->url,
+                    'cms' => $site->cmsDetail?->cms_type,
+                    'server_ip' => $site->servers->first()?->ip_address,
+                    'certificate_label' => $sslCertificate !== null
+                        ? ($sslCertificate->is_expired ? 'Expirado' : 'Vigente')
+                        : 'No',
+                    'project_status' => $projectStatus,
+                    'comments' => $comments,
+                    'current_status' => $site->current_status,
+                    'current_status_code' => strtolower((string) ($site->current_status ?? 'unknown')),
+                    'display_status_code' => $this->resolveDashboardStatus(
+                        $site,
+                        strtolower((string) ($site->current_status ?? 'unknown')),
+                        $site->latestCheck
+                    ),
+                    'last_checked_at' => optional($site->last_checked_at)?->toIso8601String(),
+                ];
+            });
+
+        $paginated = $this->paginateCollection($filtered, $page, $perPage, $request);
+
+        return Inertia::render('Monitoring/DiagnosticSites', [
+            'bucket' => $bucket,
+            'bucketLabel' => $allowedBuckets[$bucket],
+            'search' => $search,
+            'sites' => $paginated,
+            'updatedAt' => now()->toIso8601String(),
+        ]);
     }
 
     /**
@@ -496,55 +633,41 @@ final class DashboardController extends Controller
     private function mapSitesForDashboard(LengthAwarePaginator $sites): LengthAwarePaginator
     {
         $sites->setCollection(
-            $sites->getCollection()->map(fn (Site $site): array => $this->mapDashboardSite($site))
+            $sites->getCollection()->map(function (Site $site): array {
+                $latestCheck = $site->latestCheck;
+                $status = strtolower((string) ($site->current_status ?? 'unknown'));
+                $diagnosis = $this->resolveSiteDiagnosis($site, $status, $latestCheck);
+                $displayStatus = $this->resolveDashboardStatus($site, $status, $latestCheck);
+                $technology = $this->resolveTechnologyInfo($site);
+                $certificate = $site->sslCertificate;
+                $certificateLabel = 'Sin certificado';
+
+                if ($certificate !== null) {
+                    $certificateLabel = $certificate->is_expired ? 'Expirado' : 'Vigente';
+                }
+
+                return [
+                    'id' => (int) $site->id,
+                    'name' => $site->name,
+                    'domain' => $site->domain,
+                    'url' => $site->url,
+                    'current_status' => $site->current_status,
+                    'current_status_code' => $status,
+                    'display_status_code' => $displayStatus,
+                    'last_checked_at' => optional($site->last_checked_at)?->toIso8601String(),
+                    'diagnostic_bucket' => $diagnosis['bucket'],
+                    'diagnostic_label' => $diagnosis['label'],
+                    'diagnostic_reason' => $diagnosis['reason'],
+                    'technology_name' => $technology['name'],
+                    'technology_version' => $technology['version'],
+                    'technology_label' => $technology['label'],
+                    'certificate_present' => $certificate !== null,
+                    'certificate_label' => $certificateLabel,
+                ];
+            })
         );
 
         return $sites;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function mapDashboardSite(Site $site): array
-    {
-        $latestCheck = $site->latestCheck;
-        $status = strtolower((string) ($site->current_status ?? 'unknown'));
-        $diagnosis = $this->resolveSiteDiagnosis($site, $status, $latestCheck);
-        $displayStatus = $this->resolveDashboardStatus($site, $status, $latestCheck);
-        $notes = $this->splitProjectNotes((string) ($site->notes ?? ''));
-
-        return [
-            'id' => (int) $site->id,
-            'name' => $site->name,
-            'domain' => $site->domain,
-            'url' => $site->url,
-            'entity' => (string) ($site->siteGroup?->name ?? 'Sin entidad'),
-            'cms' => (string) ($site->cmsDetail?->cms_type ?? ($site->siteTechnologies->first()?->technology?->slug ?? 'Sin dato')),
-            'server_ip' => (string) ($site->primaryServer->first()?->ip_address ?? 'Externo'),
-            'certificate_present' => $site->sslCertificate !== null,
-            'certificate_label' => $site->sslCertificate !== null ? 'Sí' : 'No',
-            'project_status' => $notes['status'],
-            'comments' => $notes['comments'],
-            'current_status' => $site->current_status,
-            'current_status_code' => $status,
-            'display_status_code' => $displayStatus,
-            'last_checked_at' => optional($site->last_checked_at)?->toIso8601String(),
-            'diagnostic_bucket' => $diagnosis['bucket'],
-            'diagnostic_label' => $diagnosis['label'],
-            'diagnostic_reason' => $diagnosis['reason'],
-        ];
-    }
-
-    private function diagnosticBucketLabel(string $bucket): string
-    {
-        return match ($bucket) {
-            'operativo' => 'Operativos',
-            'respuesta_lenta' => 'Respuesta lenta',
-            'responde_con_errores' => 'Responde con errores',
-            'inestable' => 'Inestables',
-            'no_responde' => 'No responde',
-            default => 'En la cola',
-        };
     }
 
     /**
@@ -602,7 +725,10 @@ final class DashboardController extends Controller
         $normalizedError = mb_strtolower($errorMessage);
 
         $checkInterval = max(1, (int) ($site->check_interval_min ?? 5));
-        $staleMinutes = max(3, $checkInterval * 3);
+        // En corridas masivas (127 sitios x 4 etapas) los primeros sitios pueden terminar varios
+        // minutos antes que los ultimos. Subimos la ventana minima para evitar falsos "sin actualizar".
+        $massScanFreshnessGraceMinutes = max(20, (int) Setting::get('monitoring.mass_scan_freshness_grace_minutes', 45));
+        $staleMinutes = max($checkInterval * 3, $massScanFreshnessGraceMinutes);
         $lastCheckedAt = $site->last_checked_at;
 
         if ($lastCheckedAt === null || $lastCheckedAt->lt(now()->subMinutes($staleMinutes))) {
@@ -717,80 +843,62 @@ final class DashboardController extends Controller
     }
 
     /**
-     * @return array<string, int>
+     * @param array<int, int> $siteIds
      */
-    private function assetTypeCounts(): array
-    {
-        if (! $this->assetSchema->isReady()) {
-            return [];
-        }
-
-        return Site::query()
-            ->where('is_active', true)
-            ->where('is_monitored', true)
-            ->selectRaw("COALESCE(asset_type, 'unknown') as asset_type, COUNT(*) as total")
-            ->groupBy('asset_type')
-            ->pluck('total', 'asset_type')
-            ->map(static fn ($value): int => (int) $value)
-            ->toArray();
-    }
-
-    /**
-     * @return array<string, int>
-     */
-    private function assetRoleCounts(): array
-    {
-        if (! $this->assetSchema->isReady()) {
-            return [];
-        }
-
-        return Site::query()
-            ->where('is_active', true)
-            ->where('is_monitored', true)
-            ->selectRaw("COALESCE(asset_role, 'unknown') as asset_role, COUNT(*) as total")
-            ->groupBy('asset_role')
-            ->pluck('total', 'asset_role')
-            ->map(static fn ($value): int => (int) $value)
-            ->toArray();
-    }
-
-    private function dispatchMassiveScan(int $limit, int $batch): void
+    private function dispatchMassiveScan(array $siteIds, string $runId): void
     {
         try {
-            $routerEnabled = filter_var((string) env('SENTINEL_ASSET_MONITOR_ROUTER', 'true'), FILTER_VALIDATE_BOOL);
+            foreach ($siteIds as $siteId) {
+                $id = (int) $siteId;
 
-            if ($routerEnabled) {
-                Artisan::call('monitoring:dispatch-asset-monitoring', [
-                    '--limit' => $limit,
-                ]);
-
-                return;
+                $this->dispatchMonitoringJob(RunHeadCheckJob::class, $id, $runId, true);
+                $this->dispatchMonitoringJob(RunSslCheckJob::class, $id, $runId, true);
+                $this->dispatchMonitoringJob(RunSecurityHeadersCheckJob::class, $id, $runId, true);
+                $this->dispatchMonitoringJob(RunTechnologyScanJob::class, $id, $runId, true);
             }
-
-            Artisan::call('monitoring:dispatch-head-checks', [
-                '--limit' => $limit,
-                '--chunk' => $batch,
-                '--stagger' => 0,
-            ]);
-
-            Artisan::call('monitoring:dispatch-ssl-checks', [
-                '--limit' => $limit,
-                '--chunk' => $batch,
-                '--stagger' => 0,
-            ]);
-
-            Artisan::call('monitoring:dispatch-security-headers-checks', [
-                '--limit' => $limit,
-                '--chunk' => $batch,
-                '--stagger' => 0,
-            ]);
-
-            Artisan::call('monitoring:dispatch-technology-scans', [
-                '--limit' => $limit,
-            ]);
         } catch (\Throwable) {
             // El disparo masivo es best effort; nunca debe romper el flujo web.
         }
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function extractProjectStatusAndComments(string $notes): array
+    {
+        $cleanNotes = trim($notes);
+
+        if ($cleanNotes === '') {
+            return ['', ''];
+        }
+
+        if (! str_contains($cleanNotes, ' · ')) {
+            return [$cleanNotes, ''];
+        }
+
+        $parts = explode(' · ', $cleanNotes, 2);
+
+        return [trim((string) ($parts[0] ?? '')), trim((string) ($parts[1] ?? ''))];
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection<int, array<string, mixed>> $rows
+     */
+    private function paginateCollection(\Illuminate\Support\Collection $rows, int $page, int $perPage, Request $request): LengthAwarePaginator
+    {
+        $total = $rows->count();
+        $items = $rows->forPage($page, $perPage)->values();
+
+        return new LengthAwarePaginator(
+            items: $items,
+            total: $total,
+            perPage: $perPage,
+            currentPage: $page,
+            options: [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
     }
 
     /**
@@ -800,7 +908,7 @@ final class DashboardController extends Controller
     {
         $sites = Site::query()
             ->orderByRaw('LOWER(name)')
-            ->limit(250)
+            ->limit(350)
             ->get(['name', 'domain']);
 
         return $sites
@@ -815,6 +923,92 @@ final class DashboardController extends Controller
             ->all();
     }
 
+    private function scheduledScansEnabled(): bool
+    {
+        return (bool) Setting::get('monitoring.scheduled_scans_enabled', true);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function massScanHistory(): array
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('monitoring_mass_scan_runs')) {
+            return [];
+        }
+
+        return MonitoringMassScanRun::query()
+            ->with('initiatedBy:id,name,email')
+            ->orderByDesc('started_at')
+            ->limit(25)
+            ->get()
+            ->map(static function (MonitoringMassScanRun $run): array {
+                return [
+                    'run_id' => $run->run_id,
+                    'trigger_mode' => $run->trigger_mode,
+                    'status' => $run->status,
+                    'total_sites' => (int) $run->total_sites,
+                    'total_tasks' => (int) $run->total_tasks,
+                    'completed_tasks' => (int) $run->completed_tasks,
+                    'failed_tasks' => (int) $run->failed_tasks,
+                    'started_at' => optional($run->started_at)?->toIso8601String(),
+                    'last_progress_at' => optional($run->last_progress_at)?->toIso8601String(),
+                    'completed_at' => optional($run->completed_at)?->toIso8601String(),
+                    'initiated_by' => $run->initiatedBy?->name ?? 'Sistema',
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array{name: string, version: string|null, label: string}
+     */
+    private function resolveTechnologyInfo(Site $site): array
+    {
+        $cmsType = trim((string) ($site->cmsDetail?->cms_type ?? ''));
+        $cmsVersion = trim((string) ($site->cmsDetail?->cms_version ?? ''));
+
+        if ($cmsType !== '') {
+            $normalized = match (strtolower($cmsType)) {
+                'drupal' => 'Drupal',
+                'laravel' => 'Laravel',
+                'wordpress' => 'WordPress',
+                'wix' => 'Wix',
+                default => ucfirst($cmsType),
+            };
+
+            return [
+                'name' => $normalized,
+                'version' => $cmsVersion !== '' ? $cmsVersion : null,
+                'label' => $cmsVersion !== '' ? ($normalized . ' ' . $cmsVersion) : $normalized,
+            ];
+        }
+
+        $technology = $site->siteTechnologies
+            ->sortByDesc(static fn (SiteTechnology $item): int => (int) ($item->is_primary ? 1000 : 0) + ((int) $item->confidence_pct))
+            ->first();
+
+        if ($technology instanceof SiteTechnology && $technology->technology !== null) {
+            $name = trim((string) $technology->technology->name);
+            $version = trim((string) ($technology->version ?? ''));
+
+            if ($name !== '') {
+                return [
+                    'name' => $name,
+                    'version' => $version !== '' ? $version : null,
+                    'label' => $version !== '' ? ($name . ' ' . $version) : $name,
+                ];
+            }
+        }
+
+        return [
+            'name' => 'No identificada',
+            'version' => null,
+            'label' => 'No identificada',
+        ];
+    }
+
     private function dispatchMonitoringJob(string $jobClass, mixed ...$arguments): mixed
     {
         if ($this->shouldDispatchMonitoringSynchronously()) {
@@ -826,179 +1020,7 @@ final class DashboardController extends Controller
 
     private function shouldDispatchMonitoringSynchronously(): bool
     {
-        return app()->environment(['local', 'development', 'testing']);
-    }
-
-    /**
-     * @return array{status: string, comments: string}
-     */
-    private function splitProjectNotes(string $notes): array
-    {
-        $normalized = trim($notes);
-
-        if ($normalized === '') {
-            return [
-                'status' => 'Sin dato',
-                'comments' => '',
-            ];
-        }
-
-        $parts = array_values(array_filter(array_map('trim', explode('·', $normalized)), static fn (string $part): bool => $part !== ''));
-
-        if (count($parts) === 1) {
-            return [
-                'status' => $parts[0],
-                'comments' => '',
-            ];
-        }
-
-        return [
-            'status' => $parts[0],
-            'comments' => implode(' · ', array_slice($parts, 1)),
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function massScanState(): array
-    {
-        $cooldownUntil = (int) Cache::get(self::MASS_SCAN_COOLDOWN_UNTIL_KEY, 0);
-        $isCoolingDown = $cooldownUntil > now()->timestamp;
-
-        return [
-            'isRunning' => (bool) Cache::get(self::MASS_SCAN_RUNNING_KEY, false),
-            'isCoolingDown' => $isCoolingDown,
-            'cooldownUntil' => $isCoolingDown ? now()->setTimestamp($cooldownUntil)->toIso8601String() : null,
-            'lastTriggeredAt' => Cache::get(self::MASS_SCAN_LAST_TRIGGERED_AT_KEY),
-        ];
-    }
-
-    /**
-     * @return array<string, int>
-     */
-    private function queueDepthSnapshot(): array
-    {
-        $snapshot = [
-            'monitoring-uptime' => 0,
-            'monitoring-ssl' => 0,
-            'monitoring-tech' => 0,
-            'monitoring-headers' => 0,
-        ];
-
-        foreach (array_keys($snapshot) as $queue) {
-            try {
-                $snapshot[$queue] = max(0, (int) Redis::llen('queues:' . $queue));
-            } catch (\Throwable) {
-                $snapshot[$queue] = 0;
-            }
-        }
-
-        return $snapshot;
-    }
-
-    /**
-     * @param array<int, string> $issues
-     */
-    private function buildColloquialFailureReason(array $issues): string
-    {
-        $base = 'Intentamos destrabarlo, pero el sistema sigue atorado por un problema de infraestructura.';
-        $detail = implode(' ', array_map(static fn (string $issue): string => ' - ' . $issue, $issues));
-
-        return trim($base . ' Detalle:' . $detail);
-    }
-
-    private function isAdminUser(Request $request): bool
-    {
-        $user = $request->user();
-
-        if ($user === null) {
-            return false;
-        }
-
-        return $user->hasRole(MonitoringPermissionMatrix::ADMIN_ROLE)
-            || $user->can('monitoring.manage_settings');
-    }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function diagnosticHistory(): array
-    {
-        return DB::table('monitoring_diagnostic_runs as mdr')
-            ->leftJoin('users as u', 'u.id', '=', 'mdr.user_id')
-            ->select([
-                'mdr.id',
-                'mdr.status',
-                'mdr.summary',
-                'mdr.reason',
-                'mdr.steps',
-                'mdr.issues',
-                'mdr.queue_before',
-                'mdr.queue_after',
-                'mdr.created_at',
-                'u.name as user_name',
-                'u.email as user_email',
-            ])
-            ->orderByDesc('created_at')
-            ->limit(20)
-            ->get()
-            ->map(static function (object $run): array {
-                $steps = json_decode((string) ($run->steps ?? '[]'), true);
-                $issues = json_decode((string) ($run->issues ?? '[]'), true);
-                $queueBefore = json_decode((string) ($run->queue_before ?? '{}'), true);
-                $queueAfter = json_decode((string) ($run->queue_after ?? '{}'), true);
-
-                return [
-                    'id' => (int) $run->id,
-                    'status' => (string) $run->status,
-                    'summary' => (string) $run->summary,
-                    'reason' => (string) $run->reason,
-                    'steps' => is_array($steps) ? $steps : [],
-                    'issues' => is_array($issues) ? $issues : [],
-                    'queue_before' => is_array($queueBefore) ? $queueBefore : [],
-                    'queue_after' => is_array($queueAfter) ? $queueAfter : [],
-                    'created_at' => $run->created_at !== null ? Carbon::parse((string) $run->created_at)->toIso8601String() : null,
-                    'user_name' => (string) ($run->user_name ?? 'Sistema'),
-                    'user_email' => (string) ($run->user_email ?? 'sistema@local'),
-                ];
-                })
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @param array<int, string> $steps
-     * @param array<int, string> $issues
-     * @param array<string, int> $queueBefore
-     * @param array<string, int> $queueAfter
-     */
-    private function storeDiagnosticRun(
-        Request $request,
-        string $status,
-        string $summary,
-        string $reason,
-        array $steps,
-        array $issues,
-        array $queueBefore,
-        array $queueAfter,
-    ): void {
-        try {
-            DB::table('monitoring_diagnostic_runs')->insert([
-                'user_id' => $request->user()?->id,
-                'status' => $status,
-                'summary' => $summary,
-                'reason' => $reason,
-                'steps' => json_encode(array_values($steps), JSON_UNESCAPED_UNICODE),
-                'issues' => json_encode(array_values($issues), JSON_UNESCAPED_UNICODE),
-                'queue_before' => json_encode($queueBefore, JSON_UNESCAPED_UNICODE),
-                'queue_after' => json_encode($queueAfter, JSON_UNESCAPED_UNICODE),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        } catch (\Throwable) {
-            // La auditoria no debe romper el flujo operativo del diagnostico.
-        }
+        return config('queue.default') === 'sync';
     }
 
 }

@@ -2,6 +2,7 @@
 
 namespace Modules\Monitoring\Providers;
 
+use App\Models\Setting;
 use Modules\Monitoring\Console\Commands\AnalyzeDashboardQueriesCommand;
 use Modules\Monitoring\Console\Commands\DispatchAssetMonitoringCommand;
 use Modules\Monitoring\Console\Commands\DispatchHeadChecksCommand;
@@ -66,6 +67,24 @@ class MonitoringServiceProvider extends ModuleServiceProvider
      */
     protected function configureSchedules(Schedule $schedule): void
     {
+        $scheduledScansEnabled = true;
+
+        try {
+            $scheduledScansEnabled = (bool) Setting::get('monitoring.scheduled_scans_enabled', true);
+        } catch (\Throwable) {
+            $scheduledScansEnabled = true;
+        }
+
+        if (! $scheduledScansEnabled) {
+            $schedule
+                ->command('monitoring:prune-site-checks --days=90')
+                ->dailyAt('03:00')
+                ->withoutOverlapping()
+                ->runInBackground();
+
+            return;
+        }
+
         $routerEnabled = filter_var((string) env('SENTINEL_ASSET_MONITOR_ROUTER', 'true'), FILTER_VALIDATE_BOOL);
 
         if ($routerEnabled) {

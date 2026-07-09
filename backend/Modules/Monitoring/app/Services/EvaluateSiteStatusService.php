@@ -39,8 +39,10 @@ final class EvaluateSiteStatusService
         $nextStatus = $previousStatus;
 
         if ($latestCheckStatus === 'up') {
+            // En corridas masivas tras reset, una sola medicion positiva debe recuperar el estado.
+            // Pedir 2 consecutivas infla falsos "degraded" y genera panel inestable.
             $consecutiveUp = $this->siteCheckRepository->consecutiveStatusCount($lockedSite->id, 'up', 5);
-            $nextStatus = $consecutiveUp >= 2 ? 'up' : 'degraded';
+            $nextStatus = $consecutiveUp >= 1 ? 'up' : 'degraded';
         } else {
             $requiredFailures = ((int) $lockedSite->priority === 1) ? 2 : 3;
             $consecutiveDown = $this->siteCheckRepository->consecutiveStatusCount($lockedSite->id, 'down', 5);

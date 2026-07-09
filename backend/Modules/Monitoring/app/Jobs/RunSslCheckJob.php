@@ -20,6 +20,7 @@ use Modules\Monitoring\Events\AlertResolved;
 use Modules\Monitoring\Events\AlertTriggered;
 use Modules\Monitoring\Events\SslExpired;
 use Modules\Monitoring\Events\SslExpiringSoon;
+use Modules\Monitoring\Support\MassScanProgress;
 
 final class RunSslCheckJob implements ShouldQueue
 {
@@ -30,7 +31,11 @@ final class RunSslCheckJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public function __construct(private readonly int $siteId)
+    public function __construct(
+        private readonly int $siteId,
+        private readonly ?string $massScanRunId = null,
+        private readonly bool $forceScan = false,
+    )
     {
         $this->onQueue((string) env('SENTINEL_QUEUE_SSL', 'monitoring-ssl'));
     }
@@ -39,20 +44,21 @@ final class RunSslCheckJob implements ShouldQueue
         SiteRepositoryInterface $siteRepository,
         AlertRepositoryInterface $alertRepository,
     ): void {
-        $site = $siteRepository->findById($this->siteId);
-
-        if (! $site instanceof Site || ! $site->is_active || ! $site->is_monitored) {
-            return;
-        }
-
-        if (! str_starts_with(strtolower($site->url), 'https://')) {
-            return;
-        }
-
         try {
-            $parsed = parse_url($site->url);
-            $host = (string) ($parsed['host'] ?? '');
-            $port = (int) ($parsed['port'] ?? 443);
+            $site = $siteRepository->findById($this->siteId);
+
+            if (! $site instanceof Site || (! $this->forceScan && (! $site->is_active || ! $site->is_monitored))) {
+                return;
+            }
+
+            if (! str_starts_with(strtolower($site->url), 'https://')) {
+                return;
+            }
+
+            try {
+                $parsed = parse_url($site->url);
+                $host = (string) ($parsed['host'] ?? '');
+                $port = (int) ($parsed['port'] ?? 443);
 
             if ($host === '') {
                 return;
@@ -187,15 +193,29 @@ final class RunSslCheckJob implements ShouldQueue
                     $daysRemaining
                 );
             }
-        } catch (\Throwable $exception) {
-            $this->openSslAlertIfNeeded(
-                $alertRepository,
-                $site,
-                'SSL requiere atencion',
-                'Error en escaneo SSL: ' . $exception->getMessage(),
-                'high',
-                'ssl.expiring.soon'
-            );
+            } catch (\Throwable $exception) {
+                $this->openSslAlertIfNeeded(
+                    $alertRepository,
+                    $site,
+                    'SSL requiere atencion',
+                    'Error en escaneo SSL: ' . $exception->getMessage(),
+                    'high',
+                    'ssl.expiring.soon'
+                );
+
+                if (is_string($this->massScanRunId) && $this->massScanRunId !== '') {
+                    MassScanProgress::recordFailure(
+                        $this->massScanRunId,
+                        'ssl',
+                        $this->siteId,
+                        $exception->getMessage(),
+                    );
+                }
+            }
+        } finally {
+            if (is_string($this->massScanRunId) && $this->massScanRunId !== '') {
+                MassScanProgress::completeTask($this->massScanRunId, 'ssl', $this->siteId);
+            }
         }
     }
 

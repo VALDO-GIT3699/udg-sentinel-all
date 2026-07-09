@@ -7,25 +7,20 @@ namespace App\Repositories;
 use App\Contracts\Repositories\SiteRepositoryInterface;
 use App\Models\Site;
 use App\Models\SiteGroup;
-use App\Support\AssetIntelligenceSchema;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 final class EloquentSiteRepository implements SiteRepositoryInterface
 {
-    public function __construct(private readonly AssetIntelligenceSchema $assetSchema)
-    {
-    }
-
     public function all(): Collection
     {
-        return Site::with(['siteGroup', 'sslCertificate', 'cmsDetail', 'primaryServer'])->orderBy('name')->get();
+        return Site::with('siteGroup')->orderBy('name')->get();
     }
 
     public function allMonitored(): Collection
     {
-        return Site::active()->monitored()->with(['siteGroup', 'sslCertificate', 'cmsDetail', 'primaryServer'])->orderBy('name')->get();
+        return Site::active()->monitored()->with('siteGroup')->orderBy('name')->get();
     }
 
     public function paginate(int $perPage, array $filters = []): LengthAwarePaginator
@@ -34,7 +29,7 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
 
         return $this->dashboardInventoryQuery($filters)
             ->selectRaw('LOWER(sites.name) as dashboard_sort_name')
-            ->with(['latestCheck', 'siteGroup', 'sslCertificate', 'cmsDetail', 'primaryServer'])
+            ->with(['latestCheck', 'sslCertificate', 'cmsDetail', 'siteTechnologies.technology'])
             ->orderBy('dashboard_sort_name')
             ->orderBy('sites.name')
             ->orderBy('sites.id')
@@ -49,11 +44,9 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
             'latestCheck',
             'sslCertificate',
             'cmsDetail.drupalModules',
-            'primaryServer',
             'siteTechnologies.technology',
             'latestSecurityScore',
             'latestSecurityHeader',
-            'latestAssetClassification',
             'vulnerabilities' => fn ($q) => $q->active()->orderByDesc('detected_at'),
         ])->find($id);
     }
@@ -135,19 +128,19 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
     public function getDegraded(): Collection
     {
         return Site::active()->monitored()->where('current_status', 'degraded')
-            ->with(['siteGroup', 'sslCertificate', 'cmsDetail', 'primaryServer'])->orderBy('priority')->get();
+            ->with('siteGroup')->orderBy('priority')->get();
     }
 
     public function getByGroup(int $groupId): Collection
     {
         return Site::active()->where('site_group_id', $groupId)
-            ->with(['latestCheck', 'siteGroup', 'sslCertificate', 'cmsDetail', 'primaryServer'])->orderBy('name')->get();
+            ->with('latestCheck')->orderBy('name')->get();
     }
 
     public function withLatestChecks(int $limit = 10): Collection
     {
         return Site::active()->monitored()
-            ->with(['latestCheck', 'siteGroup', 'sslCertificate', 'cmsDetail', 'primaryServer'])
+            ->with('latestCheck')
             ->orderBy('priority')
             ->limit($limit)
             ->get();
@@ -157,7 +150,7 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
     {
         return Site::active()->monitored()
             ->where('site_group_id', $groupId)
-            ->with(['siteGroup', 'latestCheck', 'sslCertificate', 'cmsDetail', 'primaryServer'])
+            ->with(['siteGroup', 'latestCheck'])
             ->orderBy('priority')
             ->orderBy('name')
             ->get();
@@ -167,7 +160,7 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
     {
         return Site::active()->monitored()
             ->where('priority', $priority)
-            ->with(['siteGroup', 'latestCheck', 'sslCertificate', 'cmsDetail', 'primaryServer'])
+            ->with(['siteGroup', 'latestCheck'])
             ->orderBy('name')
             ->get();
     }
@@ -212,7 +205,7 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
                             ->where('last_checked_at', '<=', now()->subHours($hours));
                     });
             })
-            ->with(['siteGroup', 'sslCertificate', 'cmsDetail', 'primaryServer'])
+            ->with('siteGroup')
             ->orderBy('priority')
             ->orderBy('last_checked_at')
             ->limit($limit)
@@ -232,7 +225,7 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
                             ->where('checked_at', '<=', now()->subHours($hours));
                     });
             })
-            ->with(['siteGroup', 'sslCertificate', 'cmsDetail', 'primaryServer'])
+            ->with('siteGroup')
             ->orderBy('priority')
             ->orderBy('last_checked_at')
             ->limit($limit)
@@ -252,7 +245,7 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
                             ->where('detected_at', '<=', now()->subHours($hours));
                     });
             })
-            ->with(['siteGroup', 'sslCertificate', 'cmsDetail', 'primaryServer'])
+            ->with('siteGroup')
             ->orderBy('priority')
             ->orderBy('last_checked_at')
             ->limit($limit)
@@ -261,10 +254,6 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
 
     public function dueForAssetClassification(int $limit = 100): Collection
     {
-        if (! $this->assetSchema->isReady()) {
-            return new Collection();
-        }
-
         $hours = max(1, (int) env('SENTINEL_ASSET_CLASSIFICATION_INTERVAL', 24));
 
         return Site::active()->monitored()
@@ -273,13 +262,7 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
                 $query->whereNull('asset_last_classified_at')
                     ->orWhere('asset_last_classified_at', '<=', now()->subHours($hours));
             })
-            ->with([
-                'siteGroup',
-                'latestCheck',
-                'sslCertificate',
-                'siteTechnologies.technology',
-                'latestSecurityHeader',
-            ])
+            ->with(['siteGroup', 'latestCheck'])
             ->orderBy('priority')
             ->orderBy('asset_last_classified_at')
             ->limit($limit)
@@ -288,30 +271,12 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
 
     private function dashboardInventoryQuery(array $filters = []): Builder
     {
-        $baseQuery = Site::query()->select('sites.*');
+        $query = Site::query()->select('sites.*');
 
-        $this->applyDashboardFilters($baseQuery, $filters);
+        $this->applyDashboardFilters($query, $filters);
 
-        $rankedQuery = (clone $baseQuery)
-            ->selectRaw($this->dashboardCanonicalDomainSql() . ' as dashboard_canonical_domain')
-            ->selectRaw(
-                'ROW_NUMBER() OVER ('
-                . 'PARTITION BY sites.site_group_id, ' . $this->dashboardCanonicalDomainSql() . ' '
-                . 'ORDER BY '
-                . "CASE sites.current_status WHEN 'down' THEN 1 WHEN 'degraded' THEN 2 WHEN 'up' THEN 3 ELSE 4 END, "
-                . 'sites.priority ASC, '
-                . 'CASE WHEN sites.last_checked_at IS NULL THEN 1 ELSE 0 END ASC, '
-                . 'sites.last_checked_at DESC, '
-                . 'sites.id ASC'
-                . ') as dashboard_duplicate_rank'
-            );
-
-        return Site::query()
-            ->select('sites.*')
-            ->joinSub($rankedQuery, 'dashboard_ranked_sites', static function ($join): void {
-                $join->on('dashboard_ranked_sites.id', '=', 'sites.id');
-            })
-            ->where('dashboard_ranked_sites.dashboard_duplicate_rank', 1)
+        return $query
+            ->orderByRaw('LOWER(sites.name)')
             ->orderBy('sites.name')
             ->orderBy('sites.id');
     }
@@ -338,34 +303,6 @@ final class EloquentSiteRepository implements SiteRepositoryInterface
 
         if (isset($filters['priority'])) {
             $query->where('sites.priority', (int) $filters['priority']);
-        }
-
-        if ($this->assetSchema->isReady() && isset($filters['asset_type']) && $filters['asset_type'] !== 'all') {
-            $query->where('sites.asset_type', (string) $filters['asset_type']);
-        }
-
-        if ($this->assetSchema->isReady() && isset($filters['asset_role']) && $filters['asset_role'] !== 'all') {
-            $query->where('sites.asset_role', (string) $filters['asset_role']);
-        }
-
-        if ($this->assetSchema->isReady() && isset($filters['classification_mode']) && $filters['classification_mode'] !== 'all') {
-            $mode = (string) $filters['classification_mode'];
-
-            if ($mode === 'manual') {
-                $query->where('sites.asset_classification_source', 'manual');
-            }
-
-            if ($mode === 'automatic') {
-                $query->where('sites.asset_classification_source', 'automatic');
-            }
-        }
-
-        if ($this->assetSchema->isReady() && isset($filters['confidence_min'])) {
-            $query->where('sites.asset_confidence_pct', '>=', (int) $filters['confidence_min']);
-        }
-
-        if ($this->assetSchema->isReady() && isset($filters['confidence_max'])) {
-            $query->where('sites.asset_confidence_pct', '<=', (int) $filters['confidence_max']);
         }
     }
 

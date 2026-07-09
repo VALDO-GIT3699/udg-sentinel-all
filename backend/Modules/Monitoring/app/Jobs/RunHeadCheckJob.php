@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Monitoring\Services\EvaluateSiteStatusService;
 use Modules\Monitoring\Services\MonitoringHttpClientFactory;
 use Modules\Monitoring\Events\MonitoringCompleted;
+use Modules\Monitoring\Support\MassScanProgress;
 
 final class RunHeadCheckJob implements ShouldQueue
 {
@@ -31,7 +32,11 @@ final class RunHeadCheckJob implements ShouldQueue
 
     public int $tries = 3;
 
-    public function __construct(private readonly int $siteId)
+    public function __construct(
+        private readonly int $siteId,
+        private readonly ?string $massScanRunId = null,
+        private readonly bool $forceScan = false,
+    )
     {
         $this->onQueue((string) env('SENTINEL_QUEUE_UPTIME', 'monitoring-uptime'));
     }
@@ -41,28 +46,52 @@ final class RunHeadCheckJob implements ShouldQueue
         EvaluateSiteStatusService $evaluateSiteStatusService,
         MonitoringHttpClientFactory $httpClientFactory,
     ): void {
-        $site = $siteRepository->findById($this->siteId);
-
-        if (! $site instanceof Site || ! $site->is_active || ! $site->is_monitored) {
-            return;
-        }
-
-        $timeout = (int) env('SENTINEL_HTTP_TIMEOUT', 10);
-        $lockTtlSeconds = max(15, $timeout + 5);
-        $lock = Cache::lock('monitoring:head-check:site:' . $site->id, $lockTtlSeconds);
-
-        if (! $lock->get()) {
-            // Evita que checks concurrentes del mismo sitio alternen estados en el mismo instante.
-            return;
-        }
-
-        $started = microtime(true);
-        $checkedAt = now();
+        $shouldCompleteTask = true;
+        $lockAcquired = false;
 
         try {
-            $http = $httpClientFactory->make();
-            $headResponse = $http->head($site->url);
-            $resolvedResponse = $this->resolveResponseForSite($site, $headResponse, $httpClientFactory);
+            $site = $siteRepository->findById($this->siteId);
+
+            if (! $site instanceof Site || (! $this->forceScan && (! $site->is_active || ! $site->is_monitored))) {
+                return;
+            }
+
+            $timeout = (int) env('SENTINEL_HTTP_TIMEOUT', 10);
+            $lockTtlSeconds = max(15, $timeout + 5);
+            $lock = Cache::lock('monitoring:head-check:site:' . $site->id, $lockTtlSeconds);
+            $lockAcquired = (bool) $lock->get();
+
+            if (! $lockAcquired) {
+                // Evita que checks concurrentes del mismo sitio alternen estados en el mismo instante.
+                // En escaneo masivo forzado no debemos saltar el sitio: reintentamos breve y si no,
+                // se reencola para evitar falsos "sin actualizar".
+                if (! $this->forceScan) {
+                    return;
+                }
+
+                try {
+                    $lockAcquired = (bool) $lock->block(8);
+                } catch (\Throwable) {
+                    $lockAcquired = false;
+                }
+
+                if (! $lockAcquired) {
+                    $shouldCompleteTask = false;
+
+                    self::dispatch($this->siteId, $this->massScanRunId, $this->forceScan)
+                        ->delay(now()->addSeconds(20));
+
+                    return;
+                }
+            }
+
+            $started = microtime(true);
+            $checkedAt = now();
+
+            try {
+                $http = $httpClientFactory->make();
+                $headResponse = $http->head($site->url);
+                $resolvedResponse = $this->resolveResponseForSite($site, $headResponse, $httpClientFactory);
 
             $latencyMs = (int) round((microtime(true) - $started) * 1000);
             $status = $this->statusFromHttpCode($resolvedResponse->status());
@@ -70,7 +99,7 @@ final class RunHeadCheckJob implements ShouldQueue
             DB::transaction(function () use ($site, $siteRepository, $evaluateSiteStatusService, $status, $resolvedResponse, $latencyMs, $checkedAt): void {
                 $lockedSite = Site::query()->whereKey($site->id)->lockForUpdate()->first();
 
-                if (! $lockedSite instanceof Site || ! $lockedSite->is_active || ! $lockedSite->is_monitored) {
+                if (! $lockedSite instanceof Site || (! $this->forceScan && (! $lockedSite->is_active || ! $lockedSite->is_monitored))) {
                     return;
                 }
 
@@ -103,10 +132,19 @@ final class RunHeadCheckJob implements ShouldQueue
         } catch (\Throwable $exception) {
             $latencyMs = (int) round((microtime(true) - $started) * 1000);
 
+            if (is_string($this->massScanRunId) && $this->massScanRunId !== '') {
+                MassScanProgress::recordFailure(
+                    $this->massScanRunId,
+                    'uptime',
+                    $this->siteId,
+                    mb_substr($exception->getMessage(), 0, 1000)
+                );
+            }
+
             DB::transaction(function () use ($site, $siteRepository, $evaluateSiteStatusService, $latencyMs, $checkedAt, $exception): void {
                 $lockedSite = Site::query()->whereKey($site->id)->lockForUpdate()->first();
 
-                if (! $lockedSite instanceof Site || ! $lockedSite->is_active || ! $lockedSite->is_monitored) {
+                if (! $lockedSite instanceof Site || (! $this->forceScan && (! $lockedSite->is_active || ! $lockedSite->is_monitored))) {
                     return;
                 }
 
@@ -135,8 +173,15 @@ final class RunHeadCheckJob implements ShouldQueue
                 responseTimeMs: $latencyMs,
                 checkedAt: $checkedAt->toIso8601String(),
             );
+            } finally {
+                if ($lockAcquired) {
+                    $lock->release();
+                }
+            }
         } finally {
-            $lock->release();
+            if ($shouldCompleteTask && is_string($this->massScanRunId) && $this->massScanRunId !== '') {
+                MassScanProgress::completeTask($this->massScanRunId, 'uptime', $this->siteId);
+            }
         }
     }
 

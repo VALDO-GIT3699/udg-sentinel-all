@@ -20,6 +20,7 @@ use Modules\Monitoring\Events\AlertResolved;
 use Modules\Monitoring\Events\AlertTriggered;
 use Modules\Monitoring\Events\SecurityHeadersWeak;
 use Modules\Monitoring\Services\MonitoringHttpClientFactory;
+use Modules\Monitoring\Support\MassScanProgress;
 
 final class RunSecurityHeadersCheckJob implements ShouldQueue
 {
@@ -30,7 +31,11 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public function __construct(private readonly int $siteId)
+    public function __construct(
+        private readonly int $siteId,
+        private readonly ?string $massScanRunId = null,
+        private readonly bool $forceScan = false,
+    )
     {
         $this->onQueue((string) env('SENTINEL_QUEUE_HEADERS', 'monitoring-headers'));
     }
@@ -42,16 +47,17 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
         AlertNotificationService $alertNotificationService,
     ): void
     {
-        $site = $siteRepository->findById($this->siteId);
-
-        if (! $site instanceof Site || ! $site->is_active || ! $site->is_monitored) {
-            return;
-        }
-
         try {
-            $response = $httpClientFactory
-                ->make(['Accept' => 'text/html,*/*;q=0.8'])
-                ->get($site->url);
+            $site = $siteRepository->findById($this->siteId);
+
+            if (! $site instanceof Site || (! $this->forceScan && (! $site->is_active || ! $site->is_monitored))) {
+                return;
+            }
+
+            try {
+                $response = $httpClientFactory
+                    ->make(['Accept' => 'text/html,*/*;q=0.8'])
+                    ->get($site->url);
 
             $headers = array_change_key_case($response->headers(), CASE_LOWER);
 
@@ -189,8 +195,22 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
                         ));
                     });
             }
-        } catch (\Throwable) {
-            // El scanner de cabeceras no debe detener el pipeline completo.
+            } catch (\Throwable $exception) {
+                // El scanner de cabeceras no debe detener el pipeline completo.
+
+                if (is_string($this->massScanRunId) && $this->massScanRunId !== '') {
+                    MassScanProgress::recordFailure(
+                        $this->massScanRunId,
+                        'headers',
+                        $this->siteId,
+                        $exception->getMessage(),
+                    );
+                }
+            }
+        } finally {
+            if (is_string($this->massScanRunId) && $this->massScanRunId !== '') {
+                MassScanProgress::completeTask($this->massScanRunId, 'headers', $this->siteId);
+            }
         }
     }
 

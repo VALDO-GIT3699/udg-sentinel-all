@@ -16,9 +16,11 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\Client\Response;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Modules\Monitoring\Events\TechnologyStackChanged;
 use Modules\Monitoring\Events\TechnologyChanged;
 use Modules\Monitoring\Services\MonitoringHttpClientFactory;
+use Modules\Monitoring\Support\MassScanProgress;
 
 final class RunTechnologyScanJob implements ShouldQueue
 {
@@ -29,83 +31,112 @@ final class RunTechnologyScanJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public function __construct(private readonly int $siteId)
+    public function __construct(
+        private readonly int $siteId,
+        private readonly ?string $massScanRunId = null,
+        private readonly bool $forceScan = false,
+    )
     {
         $this->onQueue((string) env('SENTINEL_QUEUE_TECH', 'monitoring-tech'));
     }
 
     public function handle(SiteRepositoryInterface $siteRepository, MonitoringHttpClientFactory $httpClientFactory): void
     {
-        $site = $siteRepository->findById($this->siteId);
-
-        if (! $site instanceof Site || ! $site->is_active || ! $site->is_monitored) {
-            return;
-        }
-
         try {
-            $response = $httpClientFactory
-                ->make(['Accept' => 'text/html,*/*;q=0.8'])
-                ->get($site->url);
+            $site = $siteRepository->findById($this->siteId);
 
-            $fingerprint = $this->buildFingerprint($site, $response, $httpClientFactory);
-            $detected = $this->detectTechnologies($fingerprint);
-
-            /** @var string[] $previousSlugs */
-            $previousSlugs = SiteTechnology::where('site_id', $site->id)
-                ->join('technologies', 'technologies.id', '=', 'site_technologies.technology_id')
-                ->pluck('technologies.slug')
-                ->unique()
-                ->values()
-                ->all();
-
-            /** @var string[] $detectedSlugs */
-            $detectedSlugs = array_unique(array_column($detected, 'slug'));
-
-            foreach ($detected as $item) {
-                $technology = Technology::firstOrCreate(
-                    ['slug' => $item['slug']],
-                    [
-                        'name' => $item['name'],
-                        'category' => $item['category'],
-                        'vendor' => $item['vendor'],
-                    ]
-                );
-
-                SiteTechnology::create([
-                    'site_id' => $site->id,
-                    'technology_id' => $technology->id,
-                    'version' => $item['version'],
-                    'confidence_pct' => $item['confidence_pct'],
-                    'is_primary' => $item['is_primary'],
-                    'detected_at' => now(),
-                    'detection_method' => $item['detection_method'],
-                    'metadata' => $item['metadata'],
-                ]);
+            if (! $site instanceof Site || (! $this->forceScan && (! $site->is_active || ! $site->is_monitored))) {
+                return;
             }
 
-            $this->persistCmsDetail($site->id, $fingerprint);
+            try {
+                $response = $httpClientFactory
+                    ->make(['Accept' => 'text/html,*/*;q=0.8'])
+                    ->get($site->url);
 
-            $added = array_values(array_diff($detectedSlugs, $previousSlugs));
-            $removed = array_values(array_diff($previousSlugs, $detectedSlugs));
+                $fingerprint = $this->buildFingerprint($site, $response, $httpClientFactory);
+                $detected = $this->detectTechnologies($fingerprint);
 
-            if ($added !== [] || $removed !== []) {
-                TechnologyStackChanged::dispatch(
-                    (int) $site->id,
-                    $added,
-                    $removed,
-                    $detected,
-                    now()->toIso8601String(),
-                );
+                $previousSlugs = [];
+                $detectedSlugs = [];
 
-                TechnologyChanged::dispatch(
-                    siteId: (int) $site->id,
-                    added: $added,
-                    removed: $removed,
-                    detectedAt: now()->toIso8601String(),
-                );
+                DB::transaction(function () use ($site, $fingerprint, $detected, &$previousSlugs, &$detectedSlugs): void {
+                    /** @var string[] $existingSlugs */
+                    $existingSlugs = SiteTechnology::where('site_id', $site->id)
+                        ->join('technologies', 'technologies.id', '=', 'site_technologies.technology_id')
+                        ->pluck('technologies.slug')
+                        ->unique()
+                        ->values()
+                        ->all();
+
+                    $previousSlugs = $existingSlugs;
+
+                    SiteTechnology::query()
+                        ->where('site_id', $site->id)
+                        ->delete();
+
+                    foreach ($detected as $item) {
+                        $technology = Technology::firstOrCreate(
+                            ['slug' => $item['slug']],
+                            [
+                                'name' => $item['name'],
+                                'category' => $item['category'],
+                                'vendor' => $item['vendor'],
+                            ]
+                        );
+
+                        SiteTechnology::create([
+                            'site_id' => $site->id,
+                            'technology_id' => $technology->id,
+                            'version' => $item['version'],
+                            'confidence_pct' => $item['confidence_pct'],
+                            'is_primary' => $item['is_primary'],
+                            'detected_at' => now(),
+                            'detection_method' => $item['detection_method'],
+                            'metadata' => $item['metadata'],
+                        ]);
+                    }
+
+                    $detectedSlugs = array_values(array_unique(array_column($detected, 'slug')));
+
+                    $this->persistCmsDetail((int) $site->id, $fingerprint);
+                });
+
+                $added = array_values(array_diff($detectedSlugs, $previousSlugs));
+                $removed = array_values(array_diff($previousSlugs, $detectedSlugs));
+
+                if ($added !== [] || $removed !== []) {
+                    TechnologyStackChanged::dispatch(
+                        (int) $site->id,
+                        $added,
+                        $removed,
+                        $detected,
+                        now()->toIso8601String(),
+                    );
+
+                    TechnologyChanged::dispatch(
+                        siteId: (int) $site->id,
+                        added: $added,
+                        removed: $removed,
+                        detectedAt: now()->toIso8601String(),
+                    );
+                }
+            } catch (\Throwable $exception) {
+                // El scanner de tecnologia no debe romper el pipeline de monitoreo.
+
+                if (is_string($this->massScanRunId) && $this->massScanRunId !== '') {
+                    MassScanProgress::recordFailure(
+                        $this->massScanRunId,
+                        'technology',
+                        $this->siteId,
+                        $exception->getMessage(),
+                    );
+                }
             }
-        } catch (\Throwable) {
-            // El scanner de tecnologia no debe romper el pipeline de monitoreo.
+        } finally {
+            if (is_string($this->massScanRunId) && $this->massScanRunId !== '') {
+                MassScanProgress::completeTask($this->massScanRunId, 'technology', $this->siteId);
+            }
         }
     }
 
@@ -666,6 +697,14 @@ final class RunTechnologyScanJob implements ShouldQueue
      */
     private function captureDrupalModuleHints(CmsDetail $cmsDetail, array $moduleNames): void
     {
+        if ($moduleNames === []) {
+            DrupalModule::query()
+                ->where('cms_detail_id', $cmsDetail->id)
+                ->delete();
+
+            return;
+        }
+
         foreach ($moduleNames as $moduleName) {
             DrupalModule::updateOrCreate(
                 ['cms_detail_id' => $cmsDetail->id, 'module_name' => $moduleName],
@@ -679,5 +718,10 @@ final class RunTechnologyScanJob implements ShouldQueue
                 ]
             );
         }
+
+        DrupalModule::query()
+            ->where('cms_detail_id', $cmsDetail->id)
+            ->whereNotIn('module_name', $moduleNames)
+            ->delete();
     }
 }
