@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Modules\Monitoring\Jobs;
 
 use App\Contracts\Repositories\SiteRepositoryInterface;
-use App\Models\BrokenLink;
 use App\Models\Site;
 use App\Models\SiteCheck;
 use App\Models\TrafficMetric;
@@ -120,7 +119,6 @@ final class RunHeadCheckJob implements ShouldQueue
             });
 
             $this->recordTrafficSample($site, $latencyMs, $status, $resolvedResponse->status());
-            $this->recordBrokenLinksFromSite($site, $resolvedResponse, $httpClientFactory);
 
             MonitoringCompleted::dispatch(
                 siteId: (int) $site->id,
@@ -351,100 +349,17 @@ final class RunHeadCheckJob implements ShouldQueue
     private function recordTrafficSample(Site $site, int $latencyMs, string $status, ?int $httpCode): void
     {
         try {
-            $errorRate = $status === 'down' ? 100.0 : ($status === 'degraded' ? 35.0 : 0.0);
-
             TrafficMetric::query()->create([
                 'site_id' => (int) $site->id,
                 'recorded_at' => now(),
-                'requests_per_min' => max(1, (int) round(60000 / max(1, $latencyMs))),
+                'requests_per_min' => null,
                 'unique_visitors' => null,
                 'bandwidth_bytes' => null,
-                'error_rate_pct' => $errorRate,
+                'error_rate_pct' => $status === 'down' ? 100.0 : ($status === 'degraded' ? 35.0 : 0.0),
                 'avg_response_time_ms' => max(1, $latencyMs),
             ]);
         } catch (\Throwable) {
             // Telemetria de trafico no debe interrumpir el check de disponibilidad.
         }
-    }
-
-    private function recordBrokenLinksFromSite(Site $site, Response $response, MonitoringHttpClientFactory $httpClientFactory): void
-    {
-        try {
-            if ($response->status() === 404) {
-                $this->upsertBrokenLink($site->id, $site->url, '/');
-            }
-
-            $html = '';
-            if ($response->header('content-type') !== null && str_contains(strtolower((string) $response->header('content-type')), 'text/html')) {
-                $html = (string) $response->body();
-            }
-
-            if ($html === '') {
-                $html = (string) $httpClientFactory
-                    ->make(['Accept' => 'text/html,*/*;q=0.8'])
-                    ->get($site->url)
-                    ->body();
-            }
-
-            if ($html === '') {
-                return;
-            }
-
-            preg_match_all('/href=["\']([^"\']+)["\']/i', $html, $matches);
-
-            $links = isset($matches[1]) && is_array($matches[1]) ? $matches[1] : [];
-            $links = array_values(array_unique($links));
-
-            $checked = 0;
-            foreach ($links as $link) {
-                if ($checked >= 8) {
-                    break;
-                }
-
-                if (! str_starts_with($link, '/') && ! str_contains($link, $site->domain)) {
-                    continue;
-                }
-
-                $absoluteUrl = str_starts_with($link, 'http') ? $link : rtrim($site->url, '/') . '/' . ltrim($link, '/');
-
-                $linkResponse = $httpClientFactory
-                    ->make(['Accept' => 'text/html,*/*;q=0.8'])
-                    ->get($absoluteUrl);
-
-                $checked++;
-
-                if ($linkResponse->status() !== 404) {
-                    continue;
-                }
-
-                $path = parse_url($absoluteUrl, PHP_URL_PATH);
-                $this->upsertBrokenLink(
-                    siteId: (int) $site->id,
-                    url: $absoluteUrl,
-                    foundOn: is_string($path) && $path !== '' ? $path : '/'
-                );
-            }
-        } catch (\Throwable) {
-            // El rastreador de 404 no debe romper el pipeline principal.
-        }
-    }
-
-    private function upsertBrokenLink(int $siteId, string $url, string $foundOn): void
-    {
-        $record = BrokenLink::query()->firstOrNew([
-            'site_id' => $siteId,
-            'url' => $url,
-        ]);
-
-        $record->fill([
-            'found_on' => $foundOn,
-            'http_code' => 404,
-            'first_detected_at' => $record->exists ? $record->first_detected_at : now(),
-            'last_checked_at' => now(),
-            'is_resolved' => false,
-            'resolved_at' => null,
-        ]);
-
-        $record->save();
     }
 }

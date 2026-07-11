@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Http;
 
 final class MonitoringHttpClientFactory
 {
-    private const REQUEST_TIMEOUT_SECONDS = 8;
+    private const REQUEST_TIMEOUT_SECONDS = 10;
 
     private const CONNECT_TIMEOUT_SECONDS = 5;
 
@@ -28,6 +28,7 @@ final class MonitoringHttpClientFactory
                 'connect_timeout' => self::CONNECT_TIMEOUT_SECONDS,
                 'verify' => $this->resolveSslVerificationOption(),
                 'http_errors' => false,
+                'follow_redirects' => true,
                 'allow_redirects' => [
                     'max' => $maxRedirects,
                     'strict' => false,
@@ -36,7 +37,7 @@ final class MonitoringHttpClientFactory
                 ],
             ])
             ->withHeaders(array_merge([
-                'User-Agent' => (string) env('SENTINEL_USER_AGENT', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 UDG-Sentinel/1.0'),
+                'User-Agent' => (string) env('SENTINEL_USER_AGENT', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 SentinelMonitoringBot/1.0'),
                 'Accept' => '*/*',
                 'Accept-Language' => 'es-MX,es;q=0.9,en;q=0.5',
             ], $headers));

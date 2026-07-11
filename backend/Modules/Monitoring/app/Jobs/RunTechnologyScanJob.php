@@ -13,10 +13,13 @@ use App\Models\Technology;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\Monitoring\Events\TechnologyStackChanged;
 use Modules\Monitoring\Events\TechnologyChanged;
 use Modules\Monitoring\Services\MonitoringHttpClientFactory;
@@ -37,7 +40,7 @@ final class RunTechnologyScanJob implements ShouldQueue
         private readonly bool $forceScan = false,
     )
     {
-        $this->onQueue((string) env('SENTINEL_QUEUE_TECH', 'monitoring-tech'));
+        $this->onQueue((string) env('SENTINEL_QUEUE_TECH', 'default'));
     }
 
     public function handle(SiteRepositoryInterface $siteRepository, MonitoringHttpClientFactory $httpClientFactory): void
@@ -50,9 +53,28 @@ final class RunTechnologyScanJob implements ShouldQueue
             }
 
             try {
-                $response = $httpClientFactory
-                    ->make(['Accept' => 'text/html,*/*;q=0.8'])
-                    ->get($site->url);
+                try {
+                    $response = $httpClientFactory
+                        ->make(['Accept' => 'text/html,*/*;q=0.8'])
+                        ->get($site->url);
+                } catch (ConnectionException $exception) {
+                    Log::warning('Monitoring: no fue posible conectar para detectar tecnologias.', [
+                        'site_id' => $this->siteId,
+                        'run_id' => $this->massScanRunId,
+                        'error' => $exception->getMessage(),
+                    ]);
+
+                    if (is_string($this->massScanRunId) && $this->massScanRunId !== '') {
+                        MassScanProgress::recordFailure(
+                            $this->massScanRunId,
+                            'technology',
+                            $this->siteId,
+                            mb_substr($exception->getMessage(), 0, 1000),
+                        );
+                    }
+
+                    return;
+                }
 
                 $fingerprint = $this->buildFingerprint($site, $response, $httpClientFactory);
                 $detected = $this->detectTechnologies($fingerprint);
@@ -326,20 +348,31 @@ final class RunTechnologyScanJob implements ShouldQueue
             'X-UDG-Sentinel-Probe' => 'technology-scan',
         ]);
 
+        $responses = $client->pool(function (Pool $pool) use ($site, $paths): array {
+            $requests = [];
+
+            foreach ($paths as $path) {
+                $requests[$path] = $pool
+                    ->as($path)
+                    ->get($this->buildProbeUrl($site->url, $path));
+            }
+
+            return $requests;
+        });
+
         $probes = [];
 
-        foreach ($paths as $path) {
-            try {
-                $probeResponse = $client->get($this->buildProbeUrl($site->url, $path));
-                $probes[] = [
-                    'path' => $path,
-                    'status' => $probeResponse->status(),
-                    'headers' => array_change_key_case($probeResponse->headers(), CASE_LOWER),
-                    'body_raw' => $this->truncateBody((string) $probeResponse->body()),
-                ];
-            } catch (\Throwable) {
-                // Cada sonda es aislada; si falla un path no debe afectar el escaneo del sitio.
+        foreach ($responses as $path => $probeResponse) {
+            if (! $probeResponse instanceof Response) {
+                continue;
             }
+
+            $probes[] = [
+                'path' => (string) $path,
+                'status' => $probeResponse->status(),
+                'headers' => array_change_key_case($probeResponse->headers(), CASE_LOWER),
+                'body_raw' => $this->truncateBody((string) $probeResponse->body()),
+            ];
         }
 
         return $probes;

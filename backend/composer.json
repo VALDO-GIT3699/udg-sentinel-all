@@ -30,6 +30,9 @@
         "phpstan/phpstan": "*",
         "phpunit/phpunit": "^11.5.3"
     },
+    "suggest": {
+        "danielme85/laravel-wappalyzer": "Analisis de tecnologias web basado en firmas open-source para mejorar la deteccion pasiva de CMS, frameworks e infraestructura."
+    },
     "autoload": {
         "psr-4": {
             "App\\": "app/",

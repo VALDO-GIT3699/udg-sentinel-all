@@ -84,19 +84,19 @@
       </section>
 
       <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <button type="button" class="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5 text-left transition hover:border-emerald-300/60 disabled:cursor-not-allowed disabled:opacity-60" :disabled="isSnapshotFrozen" @click="setStatusFilter('up')">
+        <button type="button" class="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5 text-left transition hover:border-emerald-300/60 disabled:cursor-not-allowed disabled:opacity-60" :title="'Sitios que responden dentro de los parametros esperados.'" :disabled="isSnapshotFrozen" @click="setStatusFilter('up')">
           <p class="text-xs uppercase tracking-[0.18em] text-emerald-300">Operativos</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ normalizedStatusCounts.UP }}</p>
         </button>
-        <button type="button" class="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-5 text-left transition hover:border-amber-300/60 disabled:cursor-not-allowed disabled:opacity-60" :disabled="isSnapshotFrozen" @click="setStatusFilter('degraded')">
+        <button type="button" class="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-5 text-left transition hover:border-amber-300/60 disabled:cursor-not-allowed disabled:opacity-60" :title="'Sitios que responden, pero con degradacion o restricciones temporales.'" :disabled="isSnapshotFrozen" @click="setStatusFilter('degraded')">
           <p class="text-xs uppercase tracking-[0.18em] text-amber-300">Con incidencias</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ normalizedStatusCounts.DEGRADED }}</p>
         </button>
-        <button type="button" class="rounded-2xl border border-rose-500/25 bg-rose-500/10 p-5 text-left transition hover:border-rose-300/60 disabled:cursor-not-allowed disabled:opacity-60" :disabled="isSnapshotFrozen" @click="setStatusFilter('down')">
+        <button type="button" class="rounded-2xl border border-rose-500/25 bg-rose-500/10 p-5 text-left transition hover:border-rose-300/60 disabled:cursor-not-allowed disabled:opacity-60" :title="'Sitios que no responden o fallan la verificacion principal.'" :disabled="isSnapshotFrozen" @click="setStatusFilter('down')">
           <p class="text-xs uppercase tracking-[0.18em] text-rose-300">No responde</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ normalizedStatusCounts.DOWN }}</p>
         </button>
-        <button type="button" class="rounded-2xl border border-amber-500/20 bg-amber-500/8 p-5 text-left transition hover:border-amber-300/50 disabled:cursor-not-allowed disabled:opacity-60" :disabled="isSnapshotFrozen" @click="setStatusFilter('unknown')">
+        <button type="button" class="rounded-2xl border border-amber-500/20 bg-amber-500/8 p-5 text-left transition hover:border-amber-300/50 disabled:cursor-not-allowed disabled:opacity-60" :title="'Sitios sin una medicion reciente o aun en proceso de escaneo.'" :disabled="isSnapshotFrozen" @click="setStatusFilter('unknown')">
           <p class="text-xs uppercase tracking-[0.18em] text-slate-300">Sin actualizar</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ normalizedStatusCounts.UNKNOWN }}</p>
         </button>
@@ -226,7 +226,12 @@
                   </a>
                 </td>
                 <td class="px-4 py-4 text-slate-300">
-                  <span class="rounded-full bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-200">{{ site.technology_label || 'No identificada' }}</span>
+                  <span
+                    class="rounded-full bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-200"
+                    :title="technologyTooltip(site)"
+                  >
+                    {{ site.technology_label || 'No identificada' }}
+                  </span>
                 </td>
                 <td class="px-4 py-4 text-slate-300">
                   <span
@@ -377,6 +382,9 @@ type SiteItem = {
   technology_name?: string | null
   technology_version?: string | null
   technology_label?: string | null
+  technology_category_label?: string | null
+  technology_confidence?: number | null
+  technology_badge_state?: 'danger' | 'success' | null
 }
 
 type Paginated<T> = {
@@ -1237,6 +1245,16 @@ const formatCheckTime = (value: string | null, status: ReturnType<typeof resolve
 
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? 'Nunca' : parsed.toLocaleString('es-MX')
+}
+
+const technologyTooltip = (site: SiteItem) => {
+  const category = site.technology_category_label?.trim() || 'Sin categoria'
+  const confidence = site.technology_confidence !== null && site.technology_confidence !== undefined
+    ? `${site.technology_confidence}%`
+    : 'Sin confianza'
+  const version = site.technology_version?.trim() || 'Sin versión'
+
+  return `${site.technology_label || 'No identificada'} · ${category} · ${confidence} · ${version}`
 }
 
 const statusPieSeries = computed(() => [

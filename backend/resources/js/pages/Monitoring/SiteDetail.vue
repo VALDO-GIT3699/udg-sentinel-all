@@ -14,36 +14,21 @@
       </header>
 
       <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <article class="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5">
+        <article class="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5" title="Porcentaje de tiempo en el que el sitio respondió correctamente durante las últimas 24 horas.">
           <p class="text-xs uppercase tracking-[0.18em] text-emerald-300">Disponibilidad ultimas 24 horas</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ uptime24h.toFixed(2) }}%</p>
         </article>
-        <article class="rounded-2xl border border-sky-500/25 bg-sky-500/10 p-5">
+        <article class="rounded-2xl border border-sky-500/25 bg-sky-500/10 p-5" title="Promedio de milisegundos que tarda la primera respuesta del sitio en 24 horas.">
           <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Tiempo de primera respuesta promedio (24 horas)</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ avgResponse24h !== null ? `${avgResponse24h} ms` : 'Sin datos' }}</p>
         </article>
-        <article class="rounded-2xl border border-rose-500/25 bg-rose-500/10 p-5">
+        <article class="rounded-2xl border border-rose-500/25 bg-rose-500/10 p-5" title="Incidencias abiertas que siguen activas y requieren seguimiento.">
           <p class="text-xs uppercase tracking-[0.18em] text-rose-300">Alertas abiertas</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ openAlerts.length }}</p>
         </article>
-        <article class="rounded-2xl border border-slate-500/35 bg-slate-800/80 p-5">
+        <article class="rounded-2xl border border-slate-500/35 bg-slate-800/80 p-5" title="Eventos recientes registrados en el timeline operativo del sitio.">
           <p class="text-xs uppercase tracking-[0.18em] text-slate-300">Eventos recientes</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ events.length }}</p>
-        </article>
-      </section>
-
-      <section class="mt-7 grid gap-4 md:grid-cols-3">
-        <article class="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-emerald-300">Mediciones activas</p>
-          <p class="mt-2 text-3xl font-semibold text-white">{{ statusBreakdown24h.up ?? 0 }}</p>
-        </article>
-        <article class="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-amber-300">Mediciones degradadas</p>
-          <p class="mt-2 text-3xl font-semibold text-white">{{ statusBreakdown24h.degraded ?? 0 }}</p>
-        </article>
-        <article class="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-rose-300">Mediciones caidas</p>
-          <p class="mt-2 text-3xl font-semibold text-white">{{ statusBreakdown24h.down ?? 0 }}</p>
         </article>
       </section>
 
@@ -170,7 +155,7 @@
         </article>
 
         <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
-          <h2 class="text-lg font-semibold text-white">Cabeceras de seguridad</h2>
+          <h2 class="text-lg font-semibold text-white" title="Resumen de cabeceras HTTP que refuerzan la seguridad del sitio.">Cabeceras de seguridad</h2>
           <div
             v-if="isTelemetryInitializing && !hasSecurityHeadersTelemetry"
             class="mt-4 space-y-3 rounded-2xl border border-cyan-400/25 bg-cyan-500/5 p-4"
@@ -187,6 +172,7 @@
               v-for="header in securityHeaders"
               :key="header.key"
               class="rounded-xl border border-slate-700 bg-slate-900 p-4"
+              :title="`Cabecera ${header.label}: ${header.present ? 'detectada' : 'no detectada'}. ${securityHeaderHint(header.key)}`"
             >
               <div class="flex items-start justify-between gap-3">
                 <div>
@@ -446,5 +432,33 @@ const formatDate = (value: string | null) => {
 
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? 'Sin datos' : parsed.toLocaleString('es-MX')
+}
+
+const securityHeaderHint = (key: string) => {
+  if (key === 'content-security-policy') {
+    return 'Protege contra inyeccion de scripts y contenido no autorizado.'
+  }
+
+  if (key === 'strict-transport-security') {
+    return 'Obliga a usar HTTPS en visitas futuras.'
+  }
+
+  if (key === 'x-frame-options') {
+    return 'Evita que el sitio se incruste en iframes no confiables.'
+  }
+
+  if (key === 'x-content-type-options') {
+    return 'Reduce interpretaciones MIME inseguras.'
+  }
+
+  if (key === 'referrer-policy') {
+    return 'Controla cuanta informacion de origen se comparte al navegar.'
+  }
+
+  if (key === 'permissions-policy') {
+    return 'Limita el acceso a funciones sensibles del navegador.'
+  }
+
+  return 'Cabecera relevante para endurecer la superficie publica.'
 }
 </script>

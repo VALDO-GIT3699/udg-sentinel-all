@@ -11,7 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Bus;
 
-final class DispatchMassScanRunJob implements ShouldQueue
+final class DispatchSiteScanChainJob implements ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -20,26 +20,22 @@ final class DispatchMassScanRunJob implements ShouldQueue
 
     public int $tries = 1;
 
-    /**
-     * @param array<int, int> $siteIds
-     */
     public function __construct(
+        private readonly int $siteId,
         private readonly string $runId,
-        private readonly array $siteIds,
+        private readonly bool $forceScan = true,
     ) {
         $this->onQueue((string) env('SENTINEL_QUEUE_ORCHESTRATION', env('SENTINEL_QUEUE_ALERTS', 'monitoring-alerts')));
     }
 
     public function handle(): void
     {
-        $jobs = [];
-
-        foreach ($this->siteIds as $siteId) {
-            $jobs[] = new DispatchSiteScanChainJob((int) $siteId, $this->runId, true);
-        }
-
-        Bus::batch($jobs)
-            ->name('monitoring-mass-scan:' . $this->runId)
-            ->dispatch();
+        Bus::chain([
+            new RunHeadCheckJob($this->siteId, $this->runId, $this->forceScan),
+            new RunSslCheckJob($this->siteId, $this->runId, $this->forceScan),
+            new RunSecurityHeadersCheckJob($this->siteId, $this->runId, $this->forceScan),
+            new RunTechnologyScanJob($this->siteId, $this->runId, $this->forceScan),
+            new RunBrokenLinksCheckJob($this->siteId, $this->runId, $this->forceScan),
+        ])->dispatch();
     }
 }

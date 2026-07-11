@@ -16,6 +16,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Modules\Monitoring\Events\AlertResolved;
 use Modules\Monitoring\Events\AlertTriggered;
 use Modules\Monitoring\Events\SecurityHeadersWeak;
@@ -30,6 +31,15 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
     use SerializesModels;
 
     public int $tries = 2;
+
+    private const TARGET_HEADERS = [
+        'strict-transport-security',
+        'content-security-policy',
+        'x-frame-options',
+        'x-content-type-options',
+        'referrer-policy',
+        'permissions-policy',
+    ];
 
     public function __construct(
         private readonly int $siteId,
@@ -60,69 +70,42 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
                     ->get($site->url);
 
             $headers = array_change_key_case($response->headers(), CASE_LOWER);
-
-            $hasHsts = isset($headers['strict-transport-security']);
-            $hasCsp = isset($headers['content-security-policy']);
-            $hasXFrame = isset($headers['x-frame-options']);
-            $hasXContentType = isset($headers['x-content-type-options']);
-            $hasReferrerPolicy = isset($headers['referrer-policy']);
-            $hasPermissionsPolicy = isset($headers['permissions-policy']);
-
-            $passed =
-                ((int) $hasHsts)
-                + ((int) $hasCsp)
-                + ((int) $hasXFrame)
-                + ((int) $hasXContentType)
-                + ((int) $hasReferrerPolicy)
-                + ((int) $hasPermissionsPolicy);
-
-            $score = (int) round(($passed / 6) * 100);
+            $headerEvaluation = $this->evaluateHeaders($headers);
+            $score = (int) round((count(array_filter($headerEvaluation)) / count(self::TARGET_HEADERS)) * 100);
             $level = SecurityScore::levelFromScore($score);
 
-            SecurityHeader::create([
-                'site_id' => $site->id,
-                'checked_at' => now(),
-                'has_hsts' => $hasHsts,
-                'has_csp' => $hasCsp,
-                'has_x_frame_options' => $hasXFrame,
-                'has_x_content_type' => $hasXContentType,
-                'has_referrer_policy' => $hasReferrerPolicy,
-                'has_permissions_policy' => $hasPermissionsPolicy,
-                'score_contribution' => $score,
-                'raw_headers' => $headers,
-            ]);
+            DB::transaction(function () use ($site, $siteRepository, $headers, $headerEvaluation, $score, $level): void {
+                SecurityHeader::create([
+                    'site_id' => $site->id,
+                    'checked_at' => now(),
+                    'has_hsts' => $headerEvaluation['strict-transport-security'],
+                    'has_csp' => $headerEvaluation['content-security-policy'],
+                    'has_x_frame_options' => $headerEvaluation['x-frame-options'],
+                    'has_x_content_type' => $headerEvaluation['x-content-type-options'],
+                    'has_referrer_policy' => $headerEvaluation['referrer-policy'],
+                    'has_permissions_policy' => $headerEvaluation['permissions-policy'],
+                    'score_contribution' => $score,
+                    'raw_headers' => $headers,
+                ]);
 
-            SecurityScore::create([
-                'site_id' => $site->id,
-                'score' => $score,
-                'level' => $level,
-                'calculated_at' => now(),
-                'breakdown' => [
-                    'strict-transport-security' => $hasHsts,
-                    'content-security-policy' => $hasCsp,
-                    'x-frame-options' => $hasXFrame,
-                    'x-content-type-options' => $hasXContentType,
-                    'referrer-policy' => $hasReferrerPolicy,
-                    'permissions-policy' => $hasPermissionsPolicy,
-                ],
-                'recommendations' => $this->buildRecommendations($headers),
-            ]);
+                SecurityScore::create([
+                    'site_id' => $site->id,
+                    'score' => $score,
+                    'level' => $level,
+                    'calculated_at' => now(),
+                    'breakdown' => $headerEvaluation,
+                    'recommendations' => $this->buildRecommendations($headerEvaluation),
+                ]);
 
-            $siteRepository->update($site, [
-                'current_score' => $score,
-                'current_score_level' => $level,
-            ]);
+                $siteRepository->update($site, [
+                    'current_score' => $score,
+                    'current_score_level' => $level,
+                ]);
+            });
 
             // Spec §9: emitir security.headers.weak cuando score < 67 (menos de 4/6 cabeceras)
             if ($score < 67) {
-                $missing = array_keys(array_filter([
-                    'strict-transport-security' => ! $hasHsts,
-                    'content-security-policy'   => ! $hasCsp,
-                    'x-frame-options'           => ! $hasXFrame,
-                    'x-content-type-options'    => ! $hasXContentType,
-                    'referrer-policy'           => ! $hasReferrerPolicy,
-                    'permissions-policy'        => ! $hasPermissionsPolicy,
-                ]));
+                $missing = array_keys(array_filter($headerEvaluation, static fn (bool $value): bool => ! $value));
 
                 SecurityHeadersWeak::dispatch(
                     siteId: (int) $site->id,
@@ -215,37 +198,92 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
     }
 
     /**
-     * @param array<string, array<int, string>> $headers
+     * @param array<string, bool> $headerEvaluation
      * @return array<int, string>
      */
-    private function buildRecommendations(array $headers): array
+    private function buildRecommendations(array $headerEvaluation): array
     {
         $recommendations = [];
 
-        if (! isset($headers['strict-transport-security'])) {
+        if (! ($headerEvaluation['strict-transport-security'] ?? false)) {
             $recommendations[] = 'Agregar Strict-Transport-Security.';
         }
 
-        if (! isset($headers['content-security-policy'])) {
-            $recommendations[] = 'Agregar Content-Security-Policy.';
+        if (! ($headerEvaluation['content-security-policy'] ?? false)) {
+            $recommendations[] = 'Agregar Content-Security-Policy sin directivas debiles.';
         }
 
-        if (! isset($headers['x-frame-options'])) {
+        if (! ($headerEvaluation['x-frame-options'] ?? false)) {
             $recommendations[] = 'Agregar X-Frame-Options.';
         }
 
-        if (! isset($headers['x-content-type-options'])) {
+        if (! ($headerEvaluation['x-content-type-options'] ?? false)) {
             $recommendations[] = 'Agregar X-Content-Type-Options: nosniff.';
         }
 
-        if (! isset($headers['referrer-policy'])) {
+        if (! ($headerEvaluation['referrer-policy'] ?? false)) {
             $recommendations[] = 'Agregar Referrer-Policy.';
         }
 
-        if (! isset($headers['permissions-policy'])) {
+        if (! ($headerEvaluation['permissions-policy'] ?? false)) {
             $recommendations[] = 'Agregar Permissions-Policy.';
         }
 
         return $recommendations;
+    }
+
+    /**
+     * @param array<string, array<int, string>> $headers
+     * @return array<string, bool>
+     */
+    private function evaluateHeaders(array $headers): array
+    {
+        return [
+            'strict-transport-security' => $this->isStrictTransportSecurityStrong($headers['strict-transport-security'] ?? []),
+            'content-security-policy' => $this->isContentSecurityPolicyStrong($headers['content-security-policy'] ?? []),
+            'x-frame-options' => $this->isHeaderPresentAndNonEmpty($headers['x-frame-options'] ?? []),
+            'x-content-type-options' => $this->isHeaderPresentAndNonEmpty($headers['x-content-type-options'] ?? []) && $this->headerContainsValue($headers['x-content-type-options'] ?? [], 'nosniff'),
+            'referrer-policy' => $this->isHeaderPresentAndNonEmpty($headers['referrer-policy'] ?? []),
+            'permissions-policy' => $this->isHeaderPresentAndNonEmpty($headers['permissions-policy'] ?? []),
+        ];
+    }
+
+    /**
+     * @param array<int, string> $values
+     */
+    private function isHeaderPresentAndNonEmpty(array $values): bool
+    {
+        return trim(implode(' ', $values)) !== '';
+    }
+
+    /**
+     * @param array<int, string> $values
+     */
+    private function headerContainsValue(array $values, string $needle): bool
+    {
+        return str_contains(mb_strtolower(implode(' ', $values)), mb_strtolower($needle));
+    }
+
+    /**
+     * @param array<int, string> $values
+     */
+    private function isStrictTransportSecurityStrong(array $values): bool
+    {
+        $value = mb_strtolower(trim(implode(' ', $values)));
+
+        return $value !== '' && str_contains($value, 'max-age=') && ! str_contains($value, 'max-age=0');
+    }
+
+    /**
+     * @param array<int, string> $values
+     */
+    private function isContentSecurityPolicyStrong(array $values): bool
+    {
+        $value = mb_strtolower(trim(implode(' ', $values)));
+
+        return $value !== ''
+            && ! str_contains($value, "'unsafe-inline'")
+            && ! str_contains($value, "'unsafe-eval'")
+            && ! str_contains($value, ' data:');
     }
 }

@@ -26,6 +26,7 @@ use Modules\Monitoring\Jobs\RunHeadCheckJob;
 use Modules\Monitoring\Jobs\RunSecurityHeadersCheckJob;
 use Modules\Monitoring\Jobs\RunSslCheckJob;
 use Modules\Monitoring\Jobs\RunTechnologyScanJob;
+use Modules\Monitoring\Support\DetectedTechnology;
 use Modules\Monitoring\Support\MassScanProgress;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -858,14 +859,7 @@ final class DashboardController extends Controller
     private function dispatchMassiveScan(array $siteIds, string $runId): void
     {
         try {
-            foreach ($siteIds as $siteId) {
-                $id = (int) $siteId;
-
-                $this->dispatchMonitoringJob(RunHeadCheckJob::class, $id, $runId, true);
-                $this->dispatchMonitoringJob(RunSslCheckJob::class, $id, $runId, true);
-                $this->dispatchMonitoringJob(RunSecurityHeadersCheckJob::class, $id, $runId, true);
-                $this->dispatchMonitoringJob(RunTechnologyScanJob::class, $id, $runId, true);
-            }
+            DispatchMassScanRunJob::dispatch($runId, $siteIds);
         } catch (\Throwable) {
             // El disparo masivo es best effort; nunca debe romper el flujo web.
         }
@@ -972,7 +966,7 @@ final class DashboardController extends Controller
     }
 
     /**
-     * @return array{name: string, version: string|null, label: string}
+     * @return array<string, mixed>
      */
     private function resolveTechnologyInfo(Site $site): array
     {
@@ -988,10 +982,22 @@ final class DashboardController extends Controller
                 default => ucfirst($cmsType),
             };
 
-            return [
+            $technology = DetectedTechnology::fromArray([
                 'name' => $normalized,
                 'version' => $cmsVersion !== '' ? $cmsVersion : null,
-                'label' => $cmsVersion !== '' ? ($normalized . ' ' . $cmsVersion) : $normalized,
+                'category' => 'cms',
+                'confidence' => 100,
+                'slug' => strtolower($normalized),
+            ])->toFrontendArray();
+
+            return [
+                'name' => $technology['name'],
+                'version' => $technology['version'],
+                'label' => $technology['display_name'],
+                'category' => $technology['category'],
+                'category_label' => $technology['category_label'],
+                'confidence' => $technology['confidence'],
+                'badge_state' => $technology['badge_state'],
             ];
         }
 
@@ -1000,14 +1006,24 @@ final class DashboardController extends Controller
             ->first();
 
         if ($technology instanceof SiteTechnology && $technology->technology !== null) {
-            $name = trim((string) $technology->technology->name);
-            $version = trim((string) ($technology->version ?? ''));
+            $detectedTechnology = DetectedTechnology::fromArray([
+                'name' => $technology->technology->name,
+                'version' => $technology->version,
+                'category' => $technology->technology->category ?? 'other',
+                'confidence' => $technology->confidence_pct,
+                'vendor' => $technology->technology->vendor,
+                'slug' => $technology->technology->slug,
+            ])->toFrontendArray();
 
-            if ($name !== '') {
+            if ($detectedTechnology['name'] !== '') {
                 return [
-                    'name' => $name,
-                    'version' => $version !== '' ? $version : null,
-                    'label' => $version !== '' ? ($name . ' ' . $version) : $name,
+                    'name' => $detectedTechnology['name'],
+                    'version' => $detectedTechnology['version'],
+                    'label' => $detectedTechnology['display_name'],
+                    'category' => $detectedTechnology['category'],
+                    'category_label' => $detectedTechnology['category_label'],
+                    'confidence' => $detectedTechnology['confidence'],
+                    'badge_state' => $detectedTechnology['badge_state'],
                 ];
             }
         }
@@ -1016,6 +1032,10 @@ final class DashboardController extends Controller
             'name' => 'No identificada',
             'version' => null,
             'label' => 'No identificada',
+            'category' => 'other',
+            'category_label' => 'Otro',
+            'confidence' => 0,
+            'badge_state' => 'danger',
         ];
     }
 

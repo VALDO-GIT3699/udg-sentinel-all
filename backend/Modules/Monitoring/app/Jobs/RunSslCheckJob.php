@@ -60,41 +60,65 @@ final class RunSslCheckJob implements ShouldQueue
                 $host = (string) ($parsed['host'] ?? '');
                 $port = (int) ($parsed['port'] ?? 443);
 
-            if ($host === '') {
-                return;
-            }
+                if ($host === '') {
+                    return;
+                }
 
-            $context = stream_context_create([
-                'ssl' => [
-                    'capture_peer_cert' => true,
-                    'verify_peer' => true,
-                    'verify_peer_name' => true,
-                    'allow_self_signed' => false,
-                    'SNI_enabled' => true,
-                    'peer_name' => $host,
-                ],
-            ]);
+                $context = stream_context_create([
+                    'ssl' => [
+                        'capture_peer_cert' => true,
+                        'verify_peer' => true,
+                        'verify_peer_name' => true,
+                        'allow_self_signed' => false,
+                        'SNI_enabled' => true,
+                        'peer_name' => $host,
+                    ],
+                ]);
 
-            $client = @stream_socket_client(
-                sprintf('ssl://%s:%d', $host, $port),
-                $errno,
-                $errstr,
-                5,
-                STREAM_CLIENT_CONNECT,
-                $context
-            );
+                $errorHandlerSet = false;
 
-            if (! is_resource($client)) {
-                $this->openSslAlertIfNeeded(
-                    $alertRepository,
-                    $site,
-                    'SSL requiere atencion',
-                    'No fue posible abrir conexion SSL: ' . $errstr,
-                    'high',
-                    'ssl.expiring.soon'
-                );
-                return;
-            }
+                try {
+                    set_error_handler(static function (int $severity, string $message, string $file, int $line): bool {
+                        throw new \ErrorException($message, 0, $severity, $file, $line);
+                    });
+                    $errorHandlerSet = true;
+
+                    $client = stream_socket_client(
+                        sprintf('ssl://%s:%d', $host, $port),
+                        $errno,
+                        $errstr,
+                        5,
+                        STREAM_CLIENT_CONNECT,
+                        $context
+                    );
+                } catch (\ErrorException $exception) {
+                    $this->openSslAlertIfNeeded(
+                        $alertRepository,
+                        $site,
+                        'SSL requiere atencion',
+                        'No fue posible abrir conexion SSL: ' . $exception->getMessage(),
+                        'high',
+                        'ssl.expiring.soon'
+                    );
+
+                    return;
+                } finally {
+                    if ($errorHandlerSet) {
+                        restore_error_handler();
+                    }
+                }
+
+                if (! is_resource($client)) {
+                    $this->openSslAlertIfNeeded(
+                        $alertRepository,
+                        $site,
+                        'SSL requiere atencion',
+                        'No fue posible abrir conexion SSL: ' . ($errstr !== '' ? $errstr : 'respuesta invalida'),
+                        'high',
+                        'ssl.expiring.soon'
+                    );
+                    return;
+                }
 
             $params = stream_context_get_params($client);
             fclose($client);
