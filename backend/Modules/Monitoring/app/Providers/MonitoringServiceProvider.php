@@ -9,6 +9,7 @@ use Modules\Monitoring\Console\Commands\DispatchHeadChecksCommand;
 use Modules\Monitoring\Console\Commands\DispatchSecurityHeadersChecksCommand;
 use Modules\Monitoring\Console\Commands\DispatchSslChecksCommand;
 use Modules\Monitoring\Console\Commands\DispatchTechnologyScansCommand;
+use Modules\Monitoring\Console\Commands\PruneOldMetricsCommand;
 use Modules\Monitoring\Console\Commands\PruneSiteChecksCommand;
 use Modules\Monitoring\Console\Commands\SeedUdgSitesCommand;
 use Modules\Monitoring\Console\Commands\SyncOfficialInventoryCommand;
@@ -44,6 +45,7 @@ class MonitoringServiceProvider extends ModuleServiceProvider
         DispatchSslChecksCommand::class,
         DispatchSecurityHeadersChecksCommand::class,
         DispatchTechnologyScansCommand::class,
+        PruneOldMetricsCommand::class,
         PruneSiteChecksCommand::class,
         SeedUdgSitesCommand::class,
         SyncOfficialInventoryCommand::class,

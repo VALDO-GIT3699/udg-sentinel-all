@@ -9,11 +9,14 @@ use App\Contracts\Repositories\SiteCheckRepositoryInterface;
 use App\Contracts\Repositories\SiteRepositoryInterface;
 use App\Http\Controllers\Controller;
 use App\Models\MonitoringMassScanRun;
+use App\Models\Alert;
 use App\Models\Setting;
 use App\Models\SiteGroup;
 use App\Models\Site;
 use App\Models\SiteCheck;
+use App\Models\SslCertificate;
 use App\Models\SiteTechnology;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -76,10 +79,27 @@ final class DashboardController extends Controller
             'sites' => $sites,
             'massScanProgress' => MassScanProgress::getCurrent(),
             'massScanHistory' => $this->massScanHistory(),
+            'preventiveExpirations' => $this->preventiveExpirations(),
             'scheduledScansEnabled' => $this->scheduledScansEnabled(),
             'canManageSettings' => (bool) $request->user()?->can('monitoring.manage_settings'),
             'refreshIntervalMs' => self::DASHBOARD_REFRESH_INTERVAL_MS,
             'updatedAt' => now()->toIso8601String(),
+        ]);
+    }
+
+    public function exportReport(Request $request)
+    {
+        $payload = $this->buildExecutivePdfPayload();
+        $fileName = 'UDG_Sentinel_Reporte_General_' . now()->format('d_m_Y') . '.pdf';
+
+        $pdf = Pdf::loadView('monitoring::reports.executive-report', $payload)
+            ->setPaper('a4', 'portrait');
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
         ]);
     }
 
@@ -114,6 +134,116 @@ final class DashboardController extends Controller
                 // El warm-up es opcional y no debe romper el request del dashboard.
             }
         }
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function preventiveExpirations(): array
+    {
+        $windowEnd = now()->addDays(60);
+
+        $rows = Site::query()
+            ->selectRaw(
+                'DISTINCT ON (sites.id) sites.id as site_id, sites.name as site_name, sites.domain as domain, ssl_certificates.valid_until as valid_until, ssl_certificates.issuer as issuer'
+            )
+            ->join('ssl_certificates', 'ssl_certificates.site_id', '=', 'sites.id')
+            ->whereNotNull('ssl_certificates.valid_until')
+            ->where('ssl_certificates.valid_until', '>=', now())
+            ->where('ssl_certificates.valid_until', '<=', $windowEnd)
+            ->orderBy('sites.id')
+            ->orderByDesc('ssl_certificates.valid_until')
+            ->orderByDesc('ssl_certificates.id')
+            ->limit(250)
+            ->get();
+
+        return $rows
+            ->map(static function ($row): array {
+                $validUntil = $row->valid_until instanceof \Illuminate\Support\Carbon
+                    ? $row->valid_until
+                    : \Illuminate\Support\Carbon::parse((string) $row->valid_until);
+                $daysRemaining = max(0, (int) now()->diffInDays($validUntil, false));
+
+                return [
+                    'id' => (int) $row->site_id,
+                    'site_name' => (string) $row->site_name,
+                    'domain' => (string) $row->domain,
+                    'valid_until' => $validUntil->toIso8601String(),
+                    'days_remaining' => $daysRemaining,
+                    'issuer' => (string) ($row->issuer ?? ''),
+                    'month_label' => $validUntil->format('Y-m'),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildExecutivePdfPayload(): array
+    {
+        $statusCounts = $this->dashboardStatusCounts();
+        $diagnosticBreakdown = $this->diagnosticBreakdown();
+        $preventiveExpirations = array_slice($this->preventiveExpirations(), 0, 12);
+        $recentRuns = array_slice($this->massScanHistory(), 0, 8);
+
+        $sites = Site::query()
+            ->with(['latestCheck', 'sslCertificate', 'cmsDetail'])
+            ->where('is_active', true)
+            ->where('is_monitored', true)
+            ->orderByRaw('LOWER(name)')
+            ->orderBy('name')
+            ->orderBy('id')
+            ->limit(20)
+            ->get()
+            ->map(function (Site $site): array {
+                $status = strtolower((string) ($site->current_status ?? 'unknown'));
+                $resolvedStatus = $this->resolveDashboardStatus($site, $status, $site->latestCheck);
+                $diagnosis = $this->resolveSiteDiagnosis($site, $status, $site->latestCheck);
+                $technology = $this->resolveTechnologyInfo($site);
+                $certificate = $site->sslCertificate;
+
+                $certificateLabel = 'Sin certificado';
+
+                if ($certificate !== null) {
+                    $validUntil = $certificate->valid_until;
+                    $daysRemaining = $validUntil !== null
+                        ? (int) now()->diffInDays($validUntil, false)
+                        : $certificate->days_remaining;
+
+                    if ($daysRemaining !== null && $daysRemaining < 0) {
+                        $certificateLabel = 'Expirado';
+                    } elseif ($daysRemaining !== null && $daysRemaining <= 30) {
+                        $certificateLabel = 'Vence en ' . $daysRemaining . ' días';
+                    } else {
+                        $certificateLabel = 'Vigente';
+                    }
+                }
+
+                return [
+                    'name' => (string) $site->name,
+                    'domain' => (string) $site->domain,
+                    'status' => $resolvedStatus,
+                    'status_label' => strtoupper($resolvedStatus),
+                    'diagnostic_label' => (string) ($diagnosis['label'] ?? 'Sin diagnóstico'),
+                    'diagnostic_reason' => (string) ($diagnosis['reason'] ?? ''),
+                    'technology' => (string) ($technology['label'] ?? 'No identificada'),
+                    'certificate' => $certificateLabel,
+                    'last_checked_at' => optional($site->last_checked_at)?->toIso8601String(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'generated_at' => now()->toIso8601String(),
+            'status_counts' => $statusCounts,
+            'diagnostic_breakdown' => $diagnosticBreakdown,
+            'preventive_expirations' => $preventiveExpirations,
+            'recent_runs' => $recentRuns,
+            'sites' => $sites,
+        ];
     }
 
     public function groupView(Request $request, SiteGroup $group): Response
@@ -1037,6 +1167,89 @@ final class DashboardController extends Controller
             'confidence' => 0,
             'badge_state' => 'danger',
         ];
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function obsoleteTechnologies(int $limit): \Illuminate\Support\Collection
+    {
+        $rows = SiteTechnology::query()
+            ->join('technologies', 'technologies.id', '=', 'site_technologies.technology_id')
+            ->join('sites', 'sites.id', '=', 'site_technologies.site_id')
+            ->select([
+                'site_technologies.id',
+                'site_technologies.site_id',
+                'site_technologies.version',
+                'site_technologies.confidence_pct',
+                'site_technologies.detected_at',
+                'technologies.name as technology_name',
+                'technologies.category as technology_category',
+                'technologies.vendor as technology_vendor',
+                'technologies.slug as technology_slug',
+                'sites.name as site_name',
+                'sites.domain as site_domain',
+            ])
+            ->orderByDesc('site_technologies.detected_at')
+            ->limit(max(10, $limit * 4))
+            ->get();
+
+        return $rows
+            ->map(static function (object $row): array {
+                $detected = DetectedTechnology::fromArray([
+                    'name' => $row->technology_name,
+                    'version' => $row->version,
+                    'category' => $row->technology_category,
+                    'confidence' => $row->confidence_pct,
+                    'vendor' => $row->technology_vendor,
+                    'slug' => $row->technology_slug,
+                ])->toFrontendArray();
+
+                return [
+                    'site' => [
+                        'name' => (string) $row->site_name,
+                        'domain' => (string) $row->site_domain,
+                    ],
+                    'technology' => $detected,
+                    'detected_at' => optional($row->detected_at)?->toIso8601String() ?? null,
+                ];
+            })
+            ->filter(static fn (array $item): bool => (bool) ($item['technology']['is_obsolete'] ?? false))
+            ->take(max(1, $limit))
+            ->values();
+    }
+
+    private function uptimePercentage(int $days): float
+    {
+        $windowStart = now()->subDays(max(1, $days));
+
+        $summary = SiteCheck::query()
+            ->where('checked_at', '>=', $windowStart)
+            ->selectRaw('COUNT(*) as total_checks')
+            ->selectRaw("SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as up_checks")
+            ->first();
+
+        $total = (int) ($summary?->total_checks ?? 0);
+
+        if ($total === 0) {
+            return 0.0;
+        }
+
+        $up = (int) ($summary?->up_checks ?? 0);
+
+        return round(($up / $total) * 100, 2);
+    }
+
+    private function averageSiteResponseTime(int $days): ?float
+    {
+        $windowStart = now()->subDays(max(1, $days));
+
+        $average = SiteCheck::query()
+            ->where('checked_at', '>=', $windowStart)
+            ->whereNotNull('response_time_ms')
+            ->avg('response_time_ms');
+
+        return $average !== null ? round((float) $average, 2) : null;
     }
 
     private function dispatchMonitoringJob(string $jobClass, mixed ...$arguments): mixed

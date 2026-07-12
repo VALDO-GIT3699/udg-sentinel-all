@@ -11,6 +11,7 @@ use Modules\Monitoring\Http\Controllers\SiteDetailController;
 use Modules\Monitoring\Http\Controllers\SiteController;
 use Modules\Monitoring\Http\Controllers\SiteGroupController;
 use Modules\Monitoring\Support\EnsureLocalMonitoringUser;
+use Symfony\Component\HttpFoundation\IpUtils;
 
 Route::middleware(['web'])->group(function () {
     Route::get('monitoring/local-autologin', function (Request $request) {
@@ -23,7 +24,13 @@ Route::middleware(['web'])->group(function () {
             abort(429, 'Demasiados intentos. Espera unos segundos e intenta de nuevo.');
         }
 
-        $isTrustedLocalIp = in_array($ip, ['127.0.0.1', '::1'], true);
+        $isTrustedLocalIp = IpUtils::checkIp($ip, [
+            '127.0.0.1',
+            '::1',
+            '10.0.0.0/8',
+            '172.16.0.0/12',
+            '192.168.0.0/16',
+        ]);
         $expectedToken = trim((string) env('MONITORING_LOCAL_AUTOLOGIN_TOKEN', ''));
         $receivedToken = trim((string) $request->query('token', ''));
 
@@ -59,6 +66,10 @@ Route::middleware(['web'])->group(function () {
         Route::post('monitoring/dashboard/scan-all', [DashboardController::class, 'scanAll'])
             ->middleware('permission:monitoring.view_dashboard')
             ->name('monitoring.dashboard.scan-all');
+
+        Route::get('monitoring/dashboard/export-report', [DashboardController::class, 'exportReport'])
+            ->middleware('permission:monitoring.view_dashboard')
+            ->name('monitoring.dashboard.export-report');
 
         Route::post('monitoring/dashboard/scan-selected', [DashboardController::class, 'scanSelected'])
             ->middleware('permission:monitoring.view_dashboard')

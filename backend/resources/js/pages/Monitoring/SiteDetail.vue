@@ -32,6 +32,86 @@
         </article>
       </section>
 
+      <section class="mt-8 grid gap-6 xl:grid-cols-2">
+        <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+          <header class="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-xs uppercase tracking-[0.22em] text-rose-300">🚨 ALERTAS ABIERTAS ACTIVAS</p>
+              <h2 class="mt-1 text-lg font-semibold text-white">Riesgos abiertos del sitio</h2>
+            </div>
+            <span class="rounded-full bg-rose-500/15 px-3 py-1 text-xs font-semibold text-rose-200">{{ openAlerts.length }} abiertas</span>
+          </header>
+
+          <div v-if="safeOpenAlerts.length === 0" class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">
+            No hay alertas activas para este sitio.
+          </div>
+
+          <div v-else class="space-y-3">
+            <article v-for="alert in visibleOpenAlerts" :key="alert.id" class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold text-white">{{ alert.title }}</p>
+                  <p class="mt-1 text-xs text-slate-400">{{ formatDate(alert.triggered_at) }}</p>
+                </div>
+                <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="alert.severity_class">{{ alert.severity_label }}</span>
+              </div>
+              <p class="mt-3 text-sm text-slate-300">{{ alert.friendly_description }}</p>
+              <p class="mt-2 text-xs text-cyan-200">Acción recomendada: {{ alert.recommended_action }}</p>
+            </article>
+
+            <button
+              v-if="openAlertsHiddenCount > 0"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-rose-400 hover:text-rose-100"
+              @click="toggleOpenAlerts"
+            >
+              <span v-if="!showAllOpenAlerts">Ver más (+{{ openAlertsHiddenCount }})</span>
+              <span v-else>Ver menos</span>
+            </button>
+          </div>
+        </article>
+
+        <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+          <header class="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-xs uppercase tracking-[0.22em] text-cyan-300">📋 HISTORIAL DE EVENTOS RECIENTES</p>
+              <h2 class="mt-1 text-lg font-semibold text-white">Últimos movimientos operativos</h2>
+            </div>
+            <span class="rounded-full bg-cyan-500/15 px-3 py-1 text-xs font-semibold text-cyan-200">{{ events.length }} visibles</span>
+          </header>
+
+          <div v-if="safeRecentEvents.length === 0" class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">
+            No hay eventos recientes registrados.
+          </div>
+
+          <div v-else class="space-y-3">
+            <article v-for="event in visibleRecentEvents" :key="event.id" class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+              <div class="flex items-start gap-3">
+                <div class="mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-800 text-sm font-bold" :class="event.icon_class">{{ event.icon }}</div>
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="text-sm font-semibold text-white">{{ event.title }}</p>
+                    <span class="rounded-full bg-slate-800 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300">{{ event.event_type }}</span>
+                  </div>
+                  <p class="mt-1 text-sm text-slate-300">{{ event.description }}</p>
+                  <p class="mt-2 text-xs text-slate-400">{{ formatDate(event.occurred_at) }}</p>
+                </div>
+              </div>
+            </article>
+
+            <button
+              v-if="recentEventsHiddenCount > 0"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-cyan-400 hover:text-cyan-100"
+              @click="toggleRecentEvents"
+            >
+              <span v-if="!showAllRecentEvents">Ver más (+{{ recentEventsHiddenCount }})</span>
+              <span v-else>Ver menos</span>
+            </button>
+          </div>
+        </article>
+      </section>
+
       <section
         v-if="isTelemetryInitializing"
         class="mt-6 rounded-2xl border border-cyan-400/35 bg-cyan-500/10 p-4"
@@ -198,7 +278,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { ApexOptions } from 'apexcharts'
 import VueApexCharts from 'vue3-apexcharts'
 
@@ -236,12 +316,26 @@ type SiteDetail = {
   } | null
 }
 
-type EventItem = {
-  id: number
-}
-
 type AlertItem = {
   id: number
+  title: string
+  severity: string
+  severity_label: string
+  severity_class: string
+  triggered_at: string | null
+  friendly_description: string
+  recommended_action: string
+}
+
+type EventItem = {
+  id: number
+  title: string
+  event_type: string
+  severity: string
+  icon: string
+  icon_class: string
+  description: string
+  occurred_at: string | null
 }
 
 const props = defineProps<{
@@ -262,6 +356,14 @@ const safeTimeline = computed(() => Array.isArray(props.timeline) ? props.timeli
 const safeTraffic24h = computed(() => Array.isArray(props.trafficSeries24h) ? props.trafficSeries24h : [])
 const safeTraffic1h = computed(() => Array.isArray(props.trafficSeries1h) ? props.trafficSeries1h : [])
 const securityHeaders = computed(() => Array.isArray(props.securityHeaders) ? props.securityHeaders : [])
+const safeOpenAlerts = computed(() => Array.isArray(props.openAlerts) ? props.openAlerts : [])
+const safeRecentEvents = computed(() => Array.isArray(props.events) ? props.events : [])
+const showAllOpenAlerts = ref(false)
+const showAllRecentEvents = ref(false)
+const visibleOpenAlerts = computed(() => showAllOpenAlerts.value ? safeOpenAlerts.value : safeOpenAlerts.value.slice(0, 3))
+const visibleRecentEvents = computed(() => showAllRecentEvents.value ? safeRecentEvents.value : safeRecentEvents.value.slice(0, 3))
+const openAlertsHiddenCount = computed(() => Math.max(0, safeOpenAlerts.value.length - 3))
+const recentEventsHiddenCount = computed(() => Math.max(0, safeRecentEvents.value.length - 3))
 const totalChecks24h = computed(() => {
   const breakdown = props.statusBreakdown24h ?? {}
   return Number(breakdown.up ?? 0) + Number(breakdown.down ?? 0) + Number(breakdown.degraded ?? 0) + Number(breakdown.timeout ?? 0)
@@ -432,6 +534,14 @@ const formatDate = (value: string | null) => {
 
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? 'Sin datos' : parsed.toLocaleString('es-MX')
+}
+
+const toggleOpenAlerts = () => {
+  showAllOpenAlerts.value = !showAllOpenAlerts.value
+}
+
+const toggleRecentEvents = () => {
+  showAllRecentEvents.value = !showAllRecentEvents.value
 }
 
 const securityHeaderHint = (key: string) => {

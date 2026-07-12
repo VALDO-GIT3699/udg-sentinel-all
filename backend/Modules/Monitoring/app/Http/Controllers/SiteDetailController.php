@@ -6,6 +6,7 @@ namespace Modules\Monitoring\Http\Controllers;
 
 use App\Contracts\Repositories\AlertRepositoryInterface;
 use App\Contracts\Repositories\SiteRepositoryInterface;
+use App\Models\Alert;
 use App\Models\Site;
 use App\Models\SiteCheck;
 use App\Models\SiteEvent;
@@ -196,8 +197,10 @@ final class SiteDetailController extends Controller
             'statusBreakdown24h' => $statusBreakdown24h,
             'uptime24h' => $this->siteCheckRepository->uptimePercentage((int) $site->id, 24),
             'avgResponse24h' => $this->siteCheckRepository->avgResponseTime((int) $site->id, 24),
-            'openAlerts' => $this->alertRepository->openForSite((int) $site->id),
-            'events' => $site->events()->orderByDesc('occurred_at')->limit(100)->get(),
+            'openAlerts' => $this->normalizeOpenAlerts($this->alertRepository->openForSite((int) $site->id)->all()),
+            'events' => $this->normalizeRecentEvents(
+                $site->events()->orderByDesc('occurred_at')->limit(20)->get()->all()
+            ),
             'trafficSeries24h' => $traffic24h->map(static fn (TrafficMetric $metric): array => [
                 'at' => optional($metric->recorded_at)?->toIso8601String(),
                 'rpm' => (int) ($metric->requests_per_min ?? 0),
@@ -275,6 +278,119 @@ final class SiteDetailController extends Controller
             'degraded' => (int) ($breakdown['degraded'] ?? 0),
             'timeout' => (int) ($breakdown['timeout'] ?? 0),
         ];
+    }
+
+    /**
+     * @param array<int, Alert> $alerts
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeOpenAlerts(array $alerts): array
+    {
+        return array_values(array_map(static function (Alert $alert): array {
+            $severity = strtolower((string) $alert->severity);
+            $message = trim((string) $alert->message);
+
+            return [
+                'id' => (int) $alert->id,
+                'title' => (string) $alert->title,
+                'severity' => $severity,
+                'severity_label' => $severity === 'critical' ? 'Crítica' : 'Advertencia',
+                'severity_class' => $severity === 'critical' ? 'bg-rose-500/15 text-rose-200' : 'bg-amber-500/15 text-amber-200',
+                'triggered_at' => optional($alert->triggered_at)?->toIso8601String(),
+                'friendly_description' => self::alertFriendlyDescription((string) $alert->title, $message),
+                'recommended_action' => self::alertRecommendedAction((string) $alert->title, $message),
+            ];
+        }, $alerts));
+    }
+
+    /**
+     * @param array<int, SiteEvent> $events
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeRecentEvents(array $events): array
+    {
+        return array_values(array_map(static function (SiteEvent $event): array {
+            [$icon, $iconClass, $description] = self::eventMetadata($event);
+
+            return [
+                'id' => (int) $event->id,
+                'title' => (string) $event->title,
+                'event_type' => (string) $event->event_type,
+                'severity' => strtolower((string) $event->severity),
+                'icon' => $icon,
+                'icon_class' => $iconClass,
+                'description' => $description,
+                'occurred_at' => optional($event->occurred_at)?->toIso8601String(),
+            ];
+        }, $events));
+    }
+
+    private static function alertFriendlyDescription(string $title, string $message): string
+    {
+        $text = mb_strtolower($title . ' ' . $message);
+
+        if (str_contains($text, 'csp') || str_contains($text, 'content-security-policy')) {
+            return 'La cabecera Content-Security-Policy sigue pendiente y conviene cerrarla antes de exponer contenido dinámico.';
+        }
+
+        if (str_contains($text, 'ssl') || str_contains($text, 'certific') || str_contains($text, 'tls')) {
+            return 'El certificado SSL requiere seguimiento preventivo para evitar pérdida de confianza o expiración.';
+        }
+
+        if (str_contains($text, 'hsts') || str_contains($text, 'strict-transport-security')) {
+            return 'El sitio no está reforzando HTTPS con HSTS de forma consistente.';
+        }
+
+        if (str_contains($text, 'x-frame-options')) {
+            return 'La protección contra clickjacking no está activa y debe quedar habilitada.';
+        }
+
+        return 'La alerta sigue abierta y requiere revisión operativa antes de que impacte disponibilidad o seguridad.';
+    }
+
+    private static function alertRecommendedAction(string $title, string $message): string
+    {
+        $text = mb_strtolower($title . ' ' . $message);
+
+        if (str_contains($text, 'csp') || str_contains($text, 'content-security-policy')) {
+            return 'Configura la cabecera en el servidor y valida los recursos permitidos.';
+        }
+
+        if (str_contains($text, 'ssl') || str_contains($text, 'certific') || str_contains($text, 'tls')) {
+            return 'Renueva el certificado, valida la cadena de confianza y confirma la fecha de expiración.';
+        }
+
+        if (str_contains($text, 'hsts') || str_contains($text, 'strict-transport-security')) {
+            return 'Activa HSTS y confirma que todas las rutas públicas resuelvan por HTTPS.';
+        }
+
+        if (str_contains($text, 'x-frame-options')) {
+            return 'Agrega la directiva anti-frame al servidor y prueba la carga en navegadores principales.';
+        }
+
+        return 'Revisa el origen, corrige la causa raíz y valida el sitio con un reescaneo manual.';
+    }
+
+    /**
+     * @return array{0: string, 1: string, 2: string}
+     */
+    private static function eventMetadata(SiteEvent $event): array
+    {
+        $type = mb_strtolower((string) $event->event_type);
+
+        if (str_contains($type, 'up') || str_contains($type, 'recovered') || str_contains($type, 'operat')) {
+            return ['↑', 'text-emerald-300', 'El sitio volvió a estado operativo.'];
+        }
+
+        if (str_contains($type, 'down') || str_contains($type, 'error') || str_contains($type, 'fail')) {
+            return ['●', 'text-rose-300', 'Se registró un evento de error o indisponibilidad.'];
+        }
+
+        if (str_contains($type, 'scan') || str_contains($type, 'change') || str_contains($type, 'update') || str_contains($type, 'manual')) {
+            return ['⚙', 'text-cyan-300', 'Se registró un cambio operativo o un reescaneo manual.'];
+        }
+
+        return ['•', 'text-slate-300', 'Evento operativo registrado en el historial reciente.'];
     }
 
     /**

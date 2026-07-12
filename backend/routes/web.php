@@ -6,27 +6,29 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\IpUtils;
+
+if (! function_exists('isTrustedLocalMonitoringOrigin')) {
+	function isTrustedLocalMonitoringOrigin(string $ip): bool
+	{
+		return IpUtils::checkIp($ip, [
+			'127.0.0.1',
+			'::1',
+			'10.0.0.0/8',
+			'172.16.0.0/12',
+			'192.168.0.0/16',
+		]);
+	}
+}
 
 Route::get('/', function () {
-	$requestIp = (string) request()->ip();
-	$isTrustedLocalIp = in_array($requestIp, ['127.0.0.1', '::1'], true);
-
-	if (app()->environment('local') && Auth::guest() && $isTrustedLocalIp) {
-		return redirect()->route('monitoring.local-login');
-	}
-
-	return redirect('/monitoring');
+	return Auth::check()
+		? redirect('/monitoring')
+		: redirect('/login');
 });
 
 Route::middleware('guest')->group(function () {
 	Route::get('/login', function () {
-		$requestIp = (string) request()->ip();
-		$isTrustedLocalIp = in_array($requestIp, ['127.0.0.1', '::1'], true);
-
-		if (app()->environment('local') && $isTrustedLocalIp) {
-			return redirect()->route('monitoring.local-login');
-		}
-
 		return view('auth.quick-login', [
 			'defaultUser' => (string) env('MONITORING_LOGIN_DEFAULT_USER', 'udgmonitoreo26B'),
 		]);

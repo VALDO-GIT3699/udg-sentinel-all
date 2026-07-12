@@ -15,6 +15,14 @@
       <section class="mb-5 flex flex-wrap items-center gap-3">
         <button
           type="button"
+          class="h-11 rounded-xl border border-cyan-400/50 bg-cyan-500/10 px-4 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="isExporting"
+          @click="exportDashboardPdf"
+        >
+          {{ isExporting ? 'Exportando...' : '📄 Exportar PDF Editable' }}
+        </button>
+        <button
+          type="button"
           class="h-11 rounded-xl border border-amber-500/60 bg-amber-500/10 px-4 text-sm font-semibold text-amber-100 transition hover:border-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
           :disabled="isMassScanRunning"
           @click="scanAllSites"
@@ -100,6 +108,56 @@
           <p class="text-xs uppercase tracking-[0.18em] text-slate-300">Sin actualizar</p>
           <p class="mt-3 text-4xl font-semibold text-white">{{ normalizedStatusCounts.UNKNOWN }}</p>
         </button>
+      </section>
+
+      <section class="mt-6 rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-[0_18px_60px_rgba(15,23,42,0.35)]">
+        <header class="mb-4 flex flex-col gap-3 border-b border-slate-800 pb-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p class="text-xs uppercase tracking-[0.22em] text-cyan-300">📅 Calendario de Vencimientos Preventivos</p>
+            <h2 class="mt-1 text-xl font-semibold text-white">Certificados SSL por renovar en los próximos 60 días</h2>
+            <p class="mt-1 text-sm text-slate-400">Vista cronológica para anticipar renovaciones y evitar interrupciones.</p>
+          </div>
+          <p class="text-xs text-slate-500">Ordenado por fecha de expiración</p>
+        </header>
+
+        <div v-if="preventiveCalendarGroups.length === 0" class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">
+          No hay certificados SSL que expiren en los próximos 60 días.
+        </div>
+
+        <div v-else class="space-y-6">
+          <section v-for="group in visiblePreventiveCalendarGroups" :key="group.monthKey" class="space-y-3">
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-lg font-semibold text-white">{{ group.monthLabel }}</h3>
+              <span class="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200">{{ group.items.length }} vencimientos</span>
+            </div>
+
+            <div class="space-y-3">
+              <article v-for="item in group.items" :key="item.id" class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p class="text-sm font-semibold text-white">{{ item.site_name }} · {{ item.domain }}</p>
+                    <p class="mt-1 text-xs text-slate-400">{{ formatDate(item.valid_until) }}</p>
+                  </div>
+                  <div class="text-sm text-slate-300">
+                    <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="item.days_remaining <= 15 ? 'bg-rose-500/15 text-rose-200' : item.days_remaining <= 30 ? 'bg-amber-500/15 text-amber-200' : 'bg-emerald-500/15 text-emerald-200'">
+                      Quedan {{ item.days_remaining }} días
+                    </span>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <button
+              v-if="preventiveCalendarHiddenCount(group) > 0"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-cyan-400 hover:text-cyan-100"
+              @click="toggleCalendarMonth(group.monthKey)"
+            >
+              <span v-if="!isCalendarExpanded(group.monthKey)">Ver más (+{{ preventiveCalendarHiddenCount(group) }})</span>
+              <span v-else>Ver menos</span>
+            </button>
+          </section>
+        </div>
       </section>
 
       <section class="mt-6 grid gap-6 xl:grid-cols-2">
@@ -408,6 +466,7 @@ type DashboardProps = {
   sites?: Paginated<SiteItem> | SiteItem[]
   massScanProgress?: MassScanProgressPayload | null
   massScanHistory?: MassScanHistoryItem[]
+  preventiveExpirations?: PreventiveExpirationItem[]
   scheduledScansEnabled?: boolean
   canManageSettings?: boolean
   refreshIntervalMs?: number
@@ -451,6 +510,22 @@ type MassScanHistoryItem = {
   initiated_by: string | null
 }
 
+type PreventiveExpirationItem = {
+  id: number
+  site_name: string
+  domain: string
+  valid_until: string | null
+  days_remaining: number
+  issuer: string | null
+  month_label: string | null
+}
+
+type PreventiveCalendarGroup = {
+  monthKey: string
+  monthLabel: string
+  items: PreventiveExpirationItem[]
+}
+
 const props = defineProps<DashboardProps>()
 
 type DashboardSnapshot = {
@@ -474,8 +549,65 @@ const hasAnnouncedActiveRun = ref(false)
 const dashboardSnapshot = ref<DashboardSnapshot | null>(null)
 
 const massScanHistoryNormalized = computed<MassScanHistoryItem[]>(() => Array.isArray(props.massScanHistory) ? props.massScanHistory : [])
+const preventiveExpirationsNormalized = computed<PreventiveExpirationItem[]>(() => Array.isArray(props.preventiveExpirations) ? props.preventiveExpirations : [])
+const isExporting = ref(false)
+const expandedCalendarMonths = ref<Set<string>>(new Set())
+const preventiveCalendarGroups = computed<PreventiveCalendarGroup[]>(() => {
+  const formatter = new Intl.DateTimeFormat('es-MX', { month: 'long', year: 'numeric' })
+  const groups = new Map<string, PreventiveExpirationItem[]>()
+
+  for (const item of preventiveExpirationsNormalized.value) {
+    const monthKey = item.month_label || (item.valid_until ? item.valid_until.slice(0, 7) : 'sin-fecha')
+
+    if (!groups.has(monthKey)) {
+      groups.set(monthKey, [])
+    }
+
+    groups.get(monthKey)?.push(item)
+  }
+
+  return Array.from(groups.entries()).map(([monthKey, items]) => {
+    const sortedItems = [...items].sort((left, right) => {
+      const leftTime = left.valid_until ? new Date(left.valid_until).getTime() : 0
+      const rightTime = right.valid_until ? new Date(right.valid_until).getTime() : 0
+      return leftTime - rightTime
+    })
+
+    const referenceDate = sortedItems[0]?.valid_until ? new Date(sortedItems[0].valid_until) : new Date(`${monthKey}-01T00:00:00`)
+
+    return {
+      monthKey,
+      monthLabel: Number.isNaN(referenceDate.getTime()) ? monthKey : formatter.format(referenceDate),
+      items: sortedItems,
+    }
+  })
+})
+
+const visiblePreventiveCalendarGroups = computed<PreventiveCalendarGroup[]>(() => {
+  return preventiveCalendarGroups.value.map((group) => ({
+    ...group,
+    items: expandedCalendarMonths.value.has(group.monthKey) ? group.items : group.items.slice(0, 3),
+  }))
+})
+
+const preventiveCalendarHiddenCount = (group: PreventiveCalendarGroup) => Math.max(0, group.items.length - 3)
+
+const isCalendarExpanded = (monthKey: string) => expandedCalendarMonths.value.has(monthKey)
+
+const toggleCalendarMonth = (monthKey: string) => {
+  const next = new Set(expandedCalendarMonths.value)
+
+  if (next.has(monthKey)) {
+    next.delete(monthKey)
+  } else {
+    next.add(monthKey)
+  }
+
+  expandedCalendarMonths.value = next
+}
 
 const isMassScanRunning = computed(() => massScanProgress.value?.status === 'running')
+const isSnapshotFrozen = computed(() => isMassScanRunning.value)
 
 const clonePayload = <T>(value: T): T => {
   if (value === undefined || value === null) {
@@ -907,6 +1039,37 @@ const scanSelectedSites = () => {
   void startSelectedScanRequest()
 }
 
+const exportDashboardPdf = async () => {
+  isExporting.value = true
+
+  try {
+    const response = await fetch('/monitoring/dashboard/export-report', {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'application/pdf',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const blob = await response.blob()
+    const objectUrl = window.URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = objectUrl
+    anchor.download = `UDG_Sentinel_Reporte_General_${new Date().toISOString().slice(0, 10).replaceAll('-', '_')}.pdf`
+    anchor.click()
+    window.URL.revokeObjectURL(objectUrl)
+  } catch {
+    actionMessage.value = 'No se pudo exportar el PDF en este momento.'
+  } finally {
+    isExporting.value = false
+  }
+}
+
 const getCsrfToken = () => {
   const meta = document.querySelector('meta[name="csrf-token"]')
   return meta instanceof HTMLMetaElement ? (meta.content || '') : ''
@@ -1221,6 +1384,8 @@ const formatDateTime = (value: string | null) => {
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString('es-MX')
 }
+
+const formatDate = (value: string | null) => formatDateTime(value)
 
 const massScanStatusLabel = (status: string) => {
   if (status === 'running') return 'En ejecución'
