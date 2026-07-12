@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\Monitoring\Jobs;
 
+use App\Models\MonitoringMassScanRun;
+use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,6 +15,7 @@ use Illuminate\Support\Facades\Bus;
 
 final class DispatchSiteScanChainJob implements ShouldQueue
 {
+    use Batchable;
     use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
@@ -30,6 +33,20 @@ final class DispatchSiteScanChainJob implements ShouldQueue
 
     public function handle(): void
     {
+        $triggerMode = MonitoringMassScanRun::query()
+            ->where('run_id', $this->runId)
+            ->value('trigger_mode');
+
+        if (is_string($triggerMode) && in_array($triggerMode, ['manual_selected', 'manual_single'], true)) {
+            RunHeadCheckJob::dispatchSync($this->siteId, $this->runId, $this->forceScan);
+            RunSslCheckJob::dispatchSync($this->siteId, $this->runId, $this->forceScan);
+            RunSecurityHeadersCheckJob::dispatchSync($this->siteId, $this->runId, $this->forceScan);
+            RunTechnologyScanJob::dispatchSync($this->siteId, $this->runId, $this->forceScan);
+            RunBrokenLinksCheckJob::dispatchSync($this->siteId, $this->runId, $this->forceScan);
+
+            return;
+        }
+
         Bus::chain([
             new RunHeadCheckJob($this->siteId, $this->runId, $this->forceScan),
             new RunSslCheckJob($this->siteId, $this->runId, $this->forceScan),

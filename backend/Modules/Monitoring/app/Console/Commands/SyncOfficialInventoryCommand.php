@@ -221,15 +221,17 @@ final class SyncOfficialInventoryCommand extends Command
             return;
         }
 
+        $normalizedLabel = trim($cmsLabel);
+
         $payload = [
             'cms_type' => $cmsType,
-            'cms_version' => null,
+            'cms_version' => $normalizedLabel !== '' ? $normalizedLabel : null,
             'db_type' => null,
             'db_version' => null,
             'php_version' => null,
             'php_is_vulnerable' => false,
             'server_software' => null,
-            'theme_name' => trim($cmsLabel) !== '' ? trim($cmsLabel) : null,
+            'theme_name' => $normalizedLabel !== '' ? $normalizedLabel : null,
             'theme_version' => null,
             'modules_count' => 0,
             'has_updates' => false,

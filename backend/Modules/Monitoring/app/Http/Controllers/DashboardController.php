@@ -189,7 +189,7 @@ final class DashboardController extends Controller
         $recentRuns = array_slice($this->massScanHistory(), 0, 8);
 
         $sites = Site::query()
-            ->with(['latestCheck', 'sslCertificate', 'cmsDetail'])
+            ->with(['latestCheck', 'sslCertificate', 'cmsDetail', 'siteTechnologies.technology'])
             ->where('is_active', true)
             ->where('is_monitored', true)
             ->orderByRaw('LOWER(name)')
@@ -499,7 +499,11 @@ final class DashboardController extends Controller
             );
         }
 
-        DispatchMassScanRunJob::dispatch($runId, $siteIds);
+        if (in_array($triggerMode, ['manual_selected', 'manual_single'], true)) {
+            DispatchMassScanRunJob::dispatchSync($runId, $siteIds);
+        } else {
+            DispatchMassScanRunJob::dispatch($runId, $siteIds);
+        }
 
         return $this->scanAllResponse(
             request: $request,
@@ -1100,8 +1104,51 @@ final class DashboardController extends Controller
      */
     private function resolveTechnologyInfo(Site $site): array
     {
+        $technology = $site->siteTechnologies
+            ->sortByDesc(static fn (SiteTechnology $item): int => (int) ($item->is_primary ? 1000 : 0) + ((int) $item->confidence_pct))
+            ->first();
+
+        if ($technology instanceof SiteTechnology && $technology->technology !== null) {
+            $detectedTechnology = DetectedTechnology::fromArray([
+                'name' => $technology->technology->name,
+                'version' => $technology->version,
+                'category' => $technology->technology->category ?? 'other',
+                'confidence' => $technology->confidence_pct,
+                'vendor' => $technology->technology->vendor,
+                'slug' => $technology->technology->slug,
+            ])->toFrontendArray();
+
+            if (
+                mb_strtolower((string) ($technology->technology->slug ?? '')) === 'drupal'
+                && trim((string) ($detectedTechnology['version'] ?? '')) === ''
+            ) {
+                $detectedTechnology = DetectedTechnology::fromArray([
+                    'name' => 'Drupal',
+                    'version' => 'Sin versión detectable',
+                    'category' => 'cms',
+                    'confidence' => $technology->confidence_pct,
+                    'vendor' => $technology->technology->vendor,
+                    'slug' => 'drupal',
+                    'evidence' => ['site-technology-null-version'],
+                ])->toFrontendArray();
+            }
+
+            if ($detectedTechnology['name'] !== '') {
+                return [
+                    'name' => $detectedTechnology['name'],
+                    'version' => $detectedTechnology['version'],
+                    'label' => $detectedTechnology['display_name'],
+                    'category' => $detectedTechnology['category'],
+                    'category_label' => $detectedTechnology['category_label'],
+                    'confidence' => $detectedTechnology['confidence'],
+                    'badge_state' => $detectedTechnology['badge_state'],
+                ];
+            }
+        }
+
         $cmsType = trim((string) ($site->cmsDetail?->cms_type ?? ''));
         $cmsVersion = trim((string) ($site->cmsDetail?->cms_version ?? ''));
+        $cmsLabel = trim((string) ($site->cmsDetail?->theme_name ?? ''));
 
         if ($cmsType !== '') {
             $normalized = match (strtolower($cmsType)) {
@@ -1111,6 +1158,69 @@ final class DashboardController extends Controller
                 'wix' => 'Wix',
                 default => ucfirst($cmsType),
             };
+
+            if ($normalized === 'Drupal' && $cmsVersion !== '' && preg_match('/^drupal\b/i', $cmsVersion) === 1) {
+                $technology = DetectedTechnology::fromArray([
+                    'name' => 'Drupal',
+                    'version' => null,
+                    'category' => 'cms',
+                    'confidence' => 100,
+                    'slug' => 'drupal',
+                    'evidence' => [$cmsVersion],
+                ])->toFrontendArray();
+
+                return [
+                    'name' => $technology['name'],
+                    'version' => null,
+                    'label' => $cmsVersion,
+                    'category' => $technology['category'],
+                    'category_label' => $technology['category_label'],
+                    'confidence' => $technology['confidence'],
+                    'badge_state' => $technology['badge_state'],
+                ];
+            }
+
+            if ($normalized === 'Drupal' && $cmsVersion === '' && $cmsLabel !== '' && preg_match('/^drupal\b/i', $cmsLabel) === 1) {
+                $technology = DetectedTechnology::fromArray([
+                    'name' => 'Drupal',
+                    'version' => null,
+                    'category' => 'cms',
+                    'confidence' => 100,
+                    'slug' => 'drupal',
+                    'evidence' => [$cmsLabel],
+                ])->toFrontendArray();
+
+                return [
+                    'name' => $technology['name'],
+                    'version' => null,
+                    'label' => $cmsLabel,
+                    'category' => $technology['category'],
+                    'category_label' => $technology['category_label'],
+                    'confidence' => $technology['confidence'],
+                    'badge_state' => $technology['badge_state'],
+                ];
+            }
+
+            if ($normalized === 'Drupal' && $cmsVersion === '') {
+                $technology = DetectedTechnology::fromArray([
+                    'name' => 'Drupal',
+                    'version' => 'Sin versión detectable',
+                    'category' => 'cms',
+                    'confidence' => 78,
+                    'slug' => 'drupal',
+                    'evidence' => ['cms-detail-fallback'],
+                ])->toFrontendArray();
+
+                return [
+                    'name' => $technology['name'],
+                    'version' => $technology['version'],
+                    'label' => $technology['display_name'],
+                    'category' => $technology['category'],
+                    'category_label' => $technology['category_label'],
+                    'confidence' => $technology['confidence'],
+                    'badge_state' => $technology['badge_state'],
+                ];
+            }
 
             $technology = DetectedTechnology::fromArray([
                 'name' => $normalized,
@@ -1129,33 +1239,6 @@ final class DashboardController extends Controller
                 'confidence' => $technology['confidence'],
                 'badge_state' => $technology['badge_state'],
             ];
-        }
-
-        $technology = $site->siteTechnologies
-            ->sortByDesc(static fn (SiteTechnology $item): int => (int) ($item->is_primary ? 1000 : 0) + ((int) $item->confidence_pct))
-            ->first();
-
-        if ($technology instanceof SiteTechnology && $technology->technology !== null) {
-            $detectedTechnology = DetectedTechnology::fromArray([
-                'name' => $technology->technology->name,
-                'version' => $technology->version,
-                'category' => $technology->technology->category ?? 'other',
-                'confidence' => $technology->confidence_pct,
-                'vendor' => $technology->technology->vendor,
-                'slug' => $technology->technology->slug,
-            ])->toFrontendArray();
-
-            if ($detectedTechnology['name'] !== '') {
-                return [
-                    'name' => $detectedTechnology['name'],
-                    'version' => $detectedTechnology['version'],
-                    'label' => $detectedTechnology['display_name'],
-                    'category' => $detectedTechnology['category'],
-                    'category_label' => $detectedTechnology['category_label'],
-                    'confidence' => $detectedTechnology['confidence'],
-                    'badge_state' => $detectedTechnology['badge_state'],
-                ];
-            }
         }
 
         return [

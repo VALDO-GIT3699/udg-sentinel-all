@@ -12,6 +12,7 @@ use Modules\Monitoring\Jobs\RunSecurityHeadersCheckJob;
 use Modules\Monitoring\Jobs\RunSslCheckJob;
 use Modules\Monitoring\Jobs\RunTechnologyScanJob;
 use Modules\Monitoring\Services\MonitoringHttpClientFactory;
+use Modules\Monitoring\Support\DrupalFingerprint;
 use Modules\Monitoring\Support\DetectedTechnology;
 
 final class WebsiteMonitoringStrategy implements AssetMonitoringStrategyInterface
@@ -55,6 +56,19 @@ final class WebsiteMonitoringStrategy implements AssetMonitoringStrategyInterfac
         $headers = array_change_key_case($response->headers(), CASE_LOWER);
         $body = mb_strtolower((string) $response->body());
         $results = [];
+
+        $drupal = DrupalFingerprint::detect($headers, (string) $response->body(), [], []);
+
+        if (is_array($drupal)) {
+            $results[] = DetectedTechnology::fromArray([
+                'name' => 'Drupal',
+                'version' => $drupal['version'] ?? null,
+                'category' => 'cms',
+                'confidence' => $drupal['confidence'] ?? 90,
+                'slug' => 'drupal',
+                'evidence' => $drupal['evidence'] ?? [],
+            ])->toFrontendArray();
+        }
 
         if (str_contains($body, 'wp-content') || str_contains($body, 'wp-includes')) {
             $results[] = DetectedTechnology::fromArray([

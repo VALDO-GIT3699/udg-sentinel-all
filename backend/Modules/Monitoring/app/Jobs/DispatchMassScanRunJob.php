@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Modules\Monitoring\Jobs;
 
+use App\Models\MonitoringMassScanRun;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Bus;
+use Modules\Monitoring\Support\MassScanProgress;
 
 final class DispatchMassScanRunJob implements ShouldQueue
 {
@@ -32,6 +34,18 @@ final class DispatchMassScanRunJob implements ShouldQueue
 
     public function handle(): void
     {
+        $triggerMode = MonitoringMassScanRun::query()
+            ->where('run_id', $this->runId)
+            ->value('trigger_mode');
+
+        if (is_string($triggerMode) && in_array($triggerMode, ['manual_selected', 'manual_single'], true)) {
+            foreach ($this->siteIds as $siteId) {
+                DispatchSiteScanChainJob::dispatchSync((int) $siteId, $this->runId, true);
+            }
+
+            return;
+        }
+
         $jobs = [];
 
         foreach ($this->siteIds as $siteId) {
@@ -41,5 +55,10 @@ final class DispatchMassScanRunJob implements ShouldQueue
         Bus::batch($jobs)
             ->name('monitoring-mass-scan:' . $this->runId)
             ->dispatch();
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        MassScanProgress::abortRun($this->runId, $exception->getMessage());
     }
 }

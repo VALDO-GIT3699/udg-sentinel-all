@@ -191,6 +191,38 @@ final class MassScanProgress
         }
     }
 
+    public static function abortRun(string $runId, string $errorMessage): void
+    {
+        $meta = self::getMeta($runId);
+
+        if ($meta === null) {
+            return;
+        }
+
+        $meta['status'] = 'completed_with_errors';
+        $meta['completed_at'] = now()->toIso8601String();
+        $meta['last_progress_at'] = now()->toIso8601String();
+
+        Cache::put(self::metaKey($runId), $meta, self::CACHE_TTL_SECONDS);
+        Cache::forget(self::CURRENT_RUN_KEY);
+
+        if (! self::canPersistHistory()) {
+            return;
+        }
+
+        $failedTasks = max(1, (int) Cache::get(self::failedTasksKey($runId), 0));
+
+        MonitoringMassScanRun::query()
+            ->where('run_id', $runId)
+            ->update([
+                'status' => 'completed_with_errors',
+                'failed_tasks' => $failedTasks,
+                'last_error' => mb_substr($errorMessage, 0, 1000),
+                'completed_at' => now(),
+                'last_progress_at' => now(),
+            ]);
+    }
+
     /**
      * @return array<string, mixed>|null
      */

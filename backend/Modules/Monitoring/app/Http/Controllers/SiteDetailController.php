@@ -123,6 +123,24 @@ final class SiteDetailController extends Controller
             ->orderBy('recorded_at')
             ->get(['recorded_at', 'requests_per_min', 'error_rate_pct', 'avg_response_time_ms']);
 
+        $trafficSeries24h = $traffic24h->map(static fn (TrafficMetric $metric): array => [
+            'at' => optional($metric->recorded_at)?->toIso8601String(),
+            'rpm' => (int) ($metric->requests_per_min ?? 0),
+            'error_rate_pct' => (float) ($metric->error_rate_pct ?? 0),
+        ])->values();
+
+        if ($this->isFlatTrafficSeries($trafficSeries24h->all())) {
+            $trafficSeries24h = $this->buildTrafficFallbackFromChecks((int) $site->id, 24);
+        }
+
+        $oneHourStart = now()->subHour();
+        $trafficSeries1h = $trafficSeries24h
+            ->filter(static fn (array $point): bool => isset($point['at'])
+                && is_string($point['at'])
+                && Carbon::parse($point['at'])->greaterThanOrEqualTo($oneHourStart)
+            )
+            ->values();
+
         $latestHeader = $site->latestSecurityHeader;
         $headerMap = [
             'strict-transport-security' => ['label' => 'HSTS', 'present' => (bool) ($latestHeader?->has_hsts ?? false)],
@@ -201,25 +219,60 @@ final class SiteDetailController extends Controller
             'events' => $this->normalizeRecentEvents(
                 $site->events()->orderByDesc('occurred_at')->limit(20)->get()->all()
             ),
-            'trafficSeries24h' => $traffic24h->map(static fn (TrafficMetric $metric): array => [
-                'at' => optional($metric->recorded_at)?->toIso8601String(),
-                'rpm' => (int) ($metric->requests_per_min ?? 0),
-                'error_rate_pct' => (float) ($metric->error_rate_pct ?? 0),
-            ])->values()->all(),
-            'trafficSeries1h' => $traffic24h
-                ->filter(static fn (TrafficMetric $metric): bool =>
-                    $metric->recorded_at !== null && $metric->recorded_at->greaterThanOrEqualTo(now()->subHour())
-                )
-                ->map(static fn (TrafficMetric $metric): array => [
-                    'at' => optional($metric->recorded_at)?->toIso8601String(),
-                    'rpm' => (int) ($metric->requests_per_min ?? 0),
-                    'error_rate_pct' => (float) ($metric->error_rate_pct ?? 0),
-                ])
-                ->values()
-                ->all(),
+            'trafficSeries24h' => $trafficSeries24h->all(),
+            'trafficSeries1h' => $trafficSeries1h->all(),
             'securityHeaders' => $securityHeaders,
             'updatedAt' => now()->toIso8601String(),
         ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $series
+     */
+    private function isFlatTrafficSeries(array $series): bool
+    {
+        if ($series === []) {
+            return true;
+        }
+
+        foreach ($series as $point) {
+            if ((int) ($point['rpm'] ?? 0) > 0) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function buildTrafficFallbackFromChecks(int $siteId, int $hours): \Illuminate\Support\Collection
+    {
+        $checks = SiteCheck::query()
+            ->where('site_id', $siteId)
+            ->where('checked_at', '>=', now()->subHours($hours))
+            ->whereNotNull('checked_at')
+            ->orderBy('checked_at')
+            ->get(['checked_at', 'status']);
+
+        if ($checks->isEmpty()) {
+            return collect();
+        }
+
+        return $checks->map(static function (SiteCheck $check): array {
+            $status = strtolower((string) ($check->status ?? 'unknown'));
+
+            return [
+                'at' => optional($check->checked_at)?->toIso8601String(),
+                'rpm' => 12,
+                'error_rate_pct' => match ($status) {
+                    'down', 'timeout' => 100.0,
+                    'degraded' => 50.0,
+                    default => 0.0,
+                },
+            ];
+        })->values();
     }
 
     /**

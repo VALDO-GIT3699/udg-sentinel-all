@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Monitoring\Events\TechnologyStackChanged;
 use Modules\Monitoring\Events\TechnologyChanged;
 use Modules\Monitoring\Services\MonitoringHttpClientFactory;
+use Modules\Monitoring\Support\DrupalFingerprint;
 use Modules\Monitoring\Support\MassScanProgress;
 
 final class RunTechnologyScanJob implements ShouldQueue
@@ -98,6 +99,15 @@ final class RunTechnologyScanJob implements ShouldQueue
                         ->delete();
 
                     foreach ($detected as $item) {
+                        $technologyLabel = trim((string) ($item['name'] ?? '') . ' ' . (string) ($item['version'] ?? ''));
+
+                        Log::info(sprintf('Escribiendo tecnología para %s: %s', (string) $site->domain, $technologyLabel !== '' ? $technologyLabel : (string) ($item['name'] ?? 'unknown')), [
+                            'site_id' => $site->id,
+                            'technology_slug' => $item['slug'] ?? null,
+                            'technology_version' => $item['version'] ?? null,
+                            'confidence_pct' => $item['confidence_pct'] ?? null,
+                        ]);
+
                         $technology = Technology::firstOrCreate(
                             ['slug' => $item['slug']],
                             [
@@ -310,7 +320,11 @@ final class RunTechnologyScanJob implements ShouldQueue
         $headers = array_change_key_case($response->headers(), CASE_LOWER);
         $bodyRaw = (string) $response->body();
         $probes = $this->probePublicPaths($site, $httpClientFactory);
-        $texts = array_merge([$bodyRaw], array_map(static fn (array $probe): string => $probe['body_raw'], $probes));
+        $successfulProbes = array_values(array_filter(
+            $probes,
+            static fn (array $probe): bool => (int) ($probe['status'] ?? 0) === 200
+        ));
+        $texts = array_merge([$bodyRaw], array_map(static fn (array $probe): string => $probe['body_raw'], $successfulProbes));
         $headerBags = array_merge([$headers], array_map(static fn (array $probe): array => $probe['headers'], $probes));
         $cms = $this->detectCms($headers, $bodyRaw, $probes);
 
@@ -334,6 +348,11 @@ final class RunTechnologyScanJob implements ShouldQueue
     private function probePublicPaths(Site $site, MonitoringHttpClientFactory $httpClientFactory): array
     {
         $paths = [
+            '/core/themes/stable10/VERSION',
+            '/core/themes/stable9/VERSION',
+            '/core/themes/starterkit_theme/README.md',
+            '/core/assets/vendor/ckeditor5/README.md',
+            '/core/lib/Drupal.php',
             '/readme.html',
             '/readme.txt',
             '/CHANGELOG.txt',
@@ -476,22 +495,34 @@ final class RunTechnologyScanJob implements ShouldQueue
         $body = mb_strtolower($bodyRaw);
         $combinedProbeBodies = implode("\n", array_map(static fn (array $probe): string => $probe['body_raw'], $probes));
         $probePaths = array_map(static fn (array $probe): string => $probe['path'], $probes);
-        $generator = $this->extractGeneratorMeta($bodyRaw);
         $setCookie = isset($headers['set-cookie']) ? mb_strtolower(implode(' ', $headers['set-cookie'])) : '';
         $poweredBy = isset($headers['x-powered-by']) ? mb_strtolower(implode(' ', $headers['x-powered-by'])) : '';
+
+        $drupal = DrupalFingerprint::detect($headers, $bodyRaw, $probes);
+
+        if (is_array($drupal)) {
+            return [
+                'type' => 'drupal',
+                'version' => $drupal['version'] ?? null,
+                'confidence' => $drupal['confidence'] ?? 90,
+                'evidence' => $drupal['evidence'] ?? [],
+            ];
+        }
 
         if (
             str_contains($body, 'drupal-settings-json')
             || str_contains($body, '/sites/default/files')
             || str_contains($body, '/sites/all/themes/')
-            || preg_match('/drupal\s+[0-9]+\.[0-9]+/i', $combinedProbeBodies) === 1
+            || preg_match('/drupal\s+[0-9]+(?:\.[0-9]+){0,2}/i', $combinedProbeBodies) === 1
         ) {
+            $fallbackDrupalVersion = $this->inferDrupalFallbackVersion($bodyRaw, $combinedProbeBodies, $probes);
+
             return [
                 'type' => 'drupal',
                 'version' => $this->firstVersionMatch(
-                    [$generator, $bodyRaw, $combinedProbeBodies],
-                    ['/drupal\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)/i', '/Drupal\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?),/i']
-                ),
+                    [$bodyRaw, $combinedProbeBodies],
+                    ['/drupal\s+([0-9]+(?:\.[0-9]+){0,2})/i', '/Drupal\s+([0-9]+(?:\.[0-9]+){0,2})/i']
+                ) ?? $fallbackDrupalVersion,
                 'confidence' => 94,
                 'evidence' => array_values(array_filter(['drupal-settings-json', '/sites/default/files', in_array('/core/CHANGELOG.txt', $probePaths, true) ? '/core/CHANGELOG.txt' : null])),
             ];
@@ -505,7 +536,7 @@ final class RunTechnologyScanJob implements ShouldQueue
             return [
                 'type' => 'wordpress',
                 'version' => $this->firstVersionMatch(
-                    [$generator, $bodyRaw, $combinedProbeBodies],
+                    [$bodyRaw, $combinedProbeBodies],
                     ['/wordpress\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)/i', '/version\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)/i']
                 ),
                 'confidence' => 92,
@@ -522,7 +553,7 @@ final class RunTechnologyScanJob implements ShouldQueue
             return [
                 'type' => 'laravel',
                 'version' => $this->firstVersionMatch(
-                    [$generator, $poweredBy, $bodyRaw, $combinedProbeBodies],
+                    [$poweredBy, $bodyRaw, $combinedProbeBodies],
                     ['/laravel(?:\s+framework|\s+v|\/)?\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)/i']
                 ),
                 'confidence' => 86,
@@ -562,6 +593,56 @@ final class RunTechnologyScanJob implements ShouldQueue
         }
 
         return null;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $probes
+     */
+    private function inferDrupalFallbackVersion(string $bodyRaw, string $combinedProbeBodies, array $probes): string
+    {
+        $body = mb_strtolower($bodyRaw . "\n" . $combinedProbeBodies);
+        $statusByPath = [];
+
+        foreach ($probes as $probe) {
+            $path = mb_strtolower((string) ($probe['path'] ?? ''));
+
+            if ($path === '') {
+                continue;
+            }
+
+            $statusByPath[$path] = (int) ($probe['status'] ?? 0);
+        }
+
+        $stable10 = $statusByPath['/core/themes/stable10/version'] ?? null;
+        $stable9 = $statusByPath['/core/themes/stable9/version'] ?? null;
+        $starterkit = $statusByPath['/core/themes/starterkit_theme/readme.md'] ?? null;
+        $ckeditor5 = $statusByPath['/core/assets/vendor/ckeditor5/readme.md'] ?? null;
+
+        if (str_contains($body, '/misc/drupal.js') || str_contains($body, '/sites/all/themes/') || str_contains($body, '/sites/all/modules/')) {
+            return '7';
+        }
+
+        if ($stable9 === 404 || str_contains($body, 'core/assets/vendor/jquery.ui/')) {
+            return '8 (Core)';
+        }
+
+        if ($stable9 === 200 && ($stable10 === 200 || str_contains($body, '/core/themes/stable10/'))) {
+            return '11 (Core)';
+        }
+
+        if ($stable9 === 200 && ($starterkit === 200 || $ckeditor5 === 200 || str_contains($body, '/core/themes/starterkit_theme/'))) {
+            return '10 (Core)';
+        }
+
+        if ($stable9 === 200) {
+            return '9 (Core)';
+        }
+
+        if (str_contains($body, '/core/') || str_contains($body, 'drupal-settings-json') || str_contains($body, '/sites/default/files')) {
+            return 'Moderno (Core)';
+        }
+
+        return 'Sin versión detectable';
     }
 
     /**

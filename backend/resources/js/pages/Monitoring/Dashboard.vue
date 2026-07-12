@@ -285,10 +285,12 @@
                 </td>
                 <td class="px-4 py-4 text-slate-300">
                   <span
-                    class="rounded-full bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-200"
+                    class="inline-flex items-center gap-2 rounded-full bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-200"
+                    :class="technologyBadgeClass(site)"
                     :title="technologyTooltip(site)"
                   >
-                    {{ site.technology_label || 'No identificada' }}
+                    <span v-if="isDrupalTechnology(site)" class="inline-flex h-4 w-4 items-center justify-center rounded-full bg-cyan-300/20 text-[10px] font-bold text-cyan-100">D</span>
+                    <span>{{ technologyDisplayLabel(site) }}</span>
                   </span>
                 </td>
                 <td class="px-4 py-4 text-slate-300">
@@ -875,6 +877,18 @@ const certificateBadgeClass = (site: SiteItem) => {
   return 'bg-emerald-500/15 text-emerald-200'
 }
 
+const technologyDisplayLabel = (site: SiteItem) => (site.technology_label || site.technology_name || 'No identificada').trim() || 'No identificada'
+
+const isDrupalTechnology = (site: SiteItem) => technologyDisplayLabel(site).toLowerCase().includes('drupal')
+
+const technologyBadgeClass = (site: SiteItem) => {
+  if (isDrupalTechnology(site)) {
+    return 'ring-1 ring-cyan-400/25'
+  }
+
+  return ''
+}
+
 const safeSiteUrl = (site: SiteItem) => {
   const candidate = site.url?.trim() || (site.domain ? `https://${site.domain}` : '')
   if (candidate === '') {
@@ -1419,7 +1433,7 @@ const technologyTooltip = (site: SiteItem) => {
     : 'Sin confianza'
   const version = site.technology_version?.trim() || 'Sin versión'
 
-  return `${site.technology_label || 'No identificada'} · ${category} · ${confidence} · ${version}`
+  return `${technologyDisplayLabel(site)} · ${category} · ${confidence} · ${version}`
 }
 
 const statusPieSeries = computed(() => [
