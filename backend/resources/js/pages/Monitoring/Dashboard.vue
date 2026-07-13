@@ -379,7 +379,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-800/80">
-              <tr v-for="run in massScanHistoryNormalized" :key="run.run_id">
+              <tr v-for="run in visibleMassScanHistory" :key="run.run_id">
                 <td class="px-4 py-3 text-slate-300">{{ formatDateTime(run.started_at) }}</td>
                 <td class="px-4 py-3 text-slate-300">{{ run.initiated_by || 'Sistema' }}</td>
                 <td class="px-4 py-3 text-slate-300">{{ run.trigger_mode === 'manual' ? 'Manual' : 'Programado' }}</td>
@@ -396,6 +396,16 @@
               </tr>
             </tbody>
           </table>
+
+          <div v-if="massScanHistoryNormalized.length > MASS_SCAN_HISTORY_VISIBLE_DEFAULT" class="mt-4 flex justify-end">
+            <button
+              type="button"
+              class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-slate-500"
+              @click="showAllMassScanHistory = !showAllMassScanHistory"
+            >
+              {{ showAllMassScanHistory ? 'Ver menos' : `Ver más (+${massScanHistoryNormalized.length - MASS_SCAN_HISTORY_VISIBLE_DEFAULT})` }}
+            </button>
+          </div>
         </div>
       </section>
     </section>
@@ -549,8 +559,17 @@ const scheduledScansEnabledLocal = ref(Boolean(props.scheduledScansEnabled ?? tr
 const isUpdatingScheduledScans = ref(false)
 const hasAnnouncedActiveRun = ref(false)
 const dashboardSnapshot = ref<DashboardSnapshot | null>(null)
+const MASS_SCAN_HISTORY_VISIBLE_DEFAULT = 5
+const showAllMassScanHistory = ref(false)
 
 const massScanHistoryNormalized = computed<MassScanHistoryItem[]>(() => Array.isArray(props.massScanHistory) ? props.massScanHistory : [])
+const visibleMassScanHistory = computed<MassScanHistoryItem[]>(() => {
+  if (showAllMassScanHistory.value) {
+    return massScanHistoryNormalized.value
+  }
+
+  return massScanHistoryNormalized.value.slice(0, MASS_SCAN_HISTORY_VISIBLE_DEFAULT)
+})
 const preventiveExpirationsNormalized = computed<PreventiveExpirationItem[]>(() => Array.isArray(props.preventiveExpirations) ? props.preventiveExpirations : [])
 const isExporting = ref(false)
 const expandedCalendarMonths = ref<Set<string>>(new Set())

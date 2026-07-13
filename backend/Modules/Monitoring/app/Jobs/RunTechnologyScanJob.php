@@ -239,6 +239,23 @@ final class RunTechnologyScanJob implements ShouldQueue
             ];
         }
 
+        if (($cms['type'] ?? null) === 'wix') {
+            $detected[] = [
+                'slug' => 'wix',
+                'name' => 'Wix',
+                'category' => 'cms',
+                'vendor' => 'Wix.com Ltd.',
+                'version' => $cms['version'] ?? null,
+                'confidence_pct' => $cms['confidence'] ?? 92,
+                'is_primary' => true,
+                'detection_method' => 'passive-http-fingerprint',
+                'metadata' => [
+                    'matched' => $cms['evidence'] ?? [],
+                    'php_version' => $phpVersion,
+                ],
+            ];
+        }
+
         if (($server['slug'] ?? null) !== null) {
             $detected[] = [
                 'slug' => $server['slug'],
@@ -319,7 +336,14 @@ final class RunTechnologyScanJob implements ShouldQueue
     {
         $headers = array_change_key_case($response->headers(), CASE_LOWER);
         $bodyRaw = (string) $response->body();
-        $probes = $this->probePublicPaths($site, $httpClientFactory);
+        $redirectContext = $this->extractRedirectContext($site, $response, $httpClientFactory);
+        $probeBaseUrl = (bool) ($redirectContext['is_external'] ?? false)
+            && (bool) ($redirectContext['final_accessible'] ?? false)
+            && is_string($redirectContext['final_url'] ?? null)
+            && trim((string) ($redirectContext['final_url'] ?? '')) !== ''
+            ? (string) $redirectContext['final_url']
+            : (string) $site->url;
+        $probes = $this->probePublicPaths($probeBaseUrl, $httpClientFactory);
         $successfulProbes = array_values(array_filter(
             $probes,
             static fn (array $probe): bool => (int) ($probe['status'] ?? 0) === 200
@@ -328,9 +352,22 @@ final class RunTechnologyScanJob implements ShouldQueue
         $headerBags = array_merge([$headers], array_map(static fn (array $probe): array => $probe['headers'], $probes));
         $cms = $this->detectCms($headers, $bodyRaw, $probes);
 
+        if (
+            (bool) ($redirectContext['is_external'] ?? false)
+            && ! (bool) ($redirectContext['final_accessible'] ?? false)
+        ) {
+            $cms = [
+                'type' => null,
+                'version' => null,
+                'confidence' => 0,
+                'evidence' => ['external-redirect-unreachable'],
+            ];
+        }
+
         return [
             'headers' => $headers,
             'body_raw' => $bodyRaw,
+            'redirect_context' => $redirectContext,
             'probes' => $probes,
             'cms' => $cms,
             'php_version' => $this->detectPhpVersion($headerBags, $texts),
@@ -345,9 +382,10 @@ final class RunTechnologyScanJob implements ShouldQueue
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function probePublicPaths(Site $site, MonitoringHttpClientFactory $httpClientFactory): array
+    private function probePublicPaths(string $baseUrl, MonitoringHttpClientFactory $httpClientFactory): array
     {
         $paths = [
+            '/core/themes/stable11/VERSION',
             '/core/themes/stable10/VERSION',
             '/core/themes/stable9/VERSION',
             '/core/themes/starterkit_theme/README.md',
@@ -367,13 +405,13 @@ final class RunTechnologyScanJob implements ShouldQueue
             'X-UDG-Sentinel-Probe' => 'technology-scan',
         ]);
 
-        $responses = $client->pool(function (Pool $pool) use ($site, $paths): array {
+        $responses = $client->pool(function (Pool $pool) use ($baseUrl, $paths): array {
             $requests = [];
 
             foreach ($paths as $path) {
                 $requests[$path] = $pool
                     ->as($path)
-                    ->get($this->buildProbeUrl($site->url, $path));
+                    ->get($this->buildProbeUrl($baseUrl, $path));
             }
 
             return $requests;
@@ -497,7 +535,39 @@ final class RunTechnologyScanJob implements ShouldQueue
         $probePaths = array_map(static fn (array $probe): string => $probe['path'], $probes);
         $setCookie = isset($headers['set-cookie']) ? mb_strtolower(implode(' ', $headers['set-cookie'])) : '';
         $poweredBy = isset($headers['x-powered-by']) ? mb_strtolower(implode(' ', $headers['x-powered-by'])) : '';
+        $hasWordPressSignature = $this->hasWordPressBaseSignature($headers, $body, $combinedProbeBodies);
+        $hasWixSignature = $this->hasWixBaseSignature($headers, $body, $combinedProbeBodies);
 
+        // Exclusión mutua estricta: primero CMS con firmas nativas definitivas.
+        if ($hasWordPressSignature) {
+            return [
+                'type' => 'wordpress',
+                'version' => $this->firstVersionMatch(
+                    [$bodyRaw, $combinedProbeBodies],
+                    ['/wordpress\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)/i', '/version\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)/i']
+                ),
+                'confidence' => 95,
+                'evidence' => array_values(array_filter(['wp-content', 'wp-includes', in_array('/readme.html', $probePaths, true) ? '/readme.html' : null])),
+            ];
+        }
+
+        if ($hasWixSignature) {
+            return [
+                'type' => 'wix',
+                'version' => null,
+                'confidence' => 96,
+                'evidence' => array_values(array_filter([
+                    str_contains($body, 'wixsite') ? 'wixsite' : null,
+                    str_contains($body, 'wix-code') ? 'wix-code' : null,
+                    str_contains($body, 'static.parastorage.com') ? 'parastorage' : null,
+                    isset($headers['x-wix-request-id']) ? 'x-wix-request-id' : null,
+                ])),
+            ];
+        }
+
+        $hasDrupalSignature = $this->hasDrupalBaseSignature($headers, $bodyRaw, $probes);
+
+        if ($hasDrupalSignature) {
         $drupal = DrupalFingerprint::detect($headers, $bodyRaw, $probes);
 
         if (is_array($drupal)) {
@@ -508,40 +578,6 @@ final class RunTechnologyScanJob implements ShouldQueue
                 'evidence' => $drupal['evidence'] ?? [],
             ];
         }
-
-        if (
-            str_contains($body, 'drupal-settings-json')
-            || str_contains($body, '/sites/default/files')
-            || str_contains($body, '/sites/all/themes/')
-            || preg_match('/drupal\s+[0-9]+(?:\.[0-9]+){0,2}/i', $combinedProbeBodies) === 1
-        ) {
-            $fallbackDrupalVersion = $this->inferDrupalFallbackVersion($bodyRaw, $combinedProbeBodies, $probes);
-
-            return [
-                'type' => 'drupal',
-                'version' => $this->firstVersionMatch(
-                    [$bodyRaw, $combinedProbeBodies],
-                    ['/drupal\s+([0-9]+(?:\.[0-9]+){0,2})/i', '/Drupal\s+([0-9]+(?:\.[0-9]+){0,2})/i']
-                ) ?? $fallbackDrupalVersion,
-                'confidence' => 94,
-                'evidence' => array_values(array_filter(['drupal-settings-json', '/sites/default/files', in_array('/core/CHANGELOG.txt', $probePaths, true) ? '/core/CHANGELOG.txt' : null])),
-            ];
-        }
-
-        if (
-            str_contains($body, 'wp-content')
-            || str_contains($body, 'wp-includes')
-            || str_contains(mb_strtolower($combinedProbeBodies), 'wordpress')
-        ) {
-            return [
-                'type' => 'wordpress',
-                'version' => $this->firstVersionMatch(
-                    [$bodyRaw, $combinedProbeBodies],
-                    ['/wordpress\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)/i', '/version\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)/i']
-                ),
-                'confidence' => 92,
-                'evidence' => array_values(array_filter(['wp-content', 'generator-meta', in_array('/readme.html', $probePaths, true) ? '/readme.html' : null])),
-            ];
         }
 
         if (
@@ -567,6 +603,93 @@ final class RunTechnologyScanJob implements ShouldQueue
             'confidence' => 0,
             'evidence' => [],
         ];
+    }
+
+    /**
+     * @param array<string, array<int, string>> $headers
+     * @param array<int, array<string, mixed>> $probes
+     */
+    private function hasDrupalBaseSignature(array $headers, string $bodyRaw, array $probes): bool
+    {
+        $body = mb_strtolower($bodyRaw);
+        $xGenerator = isset($headers['x-generator']) ? mb_strtolower(implode(' ', $headers['x-generator'])) : '';
+        $xDrupalCache = isset($headers['x-drupal-cache']) ? mb_strtolower(implode(' ', $headers['x-drupal-cache'])) : '';
+        $generatorMeta = mb_strtolower($this->extractGeneratorMeta($bodyRaw));
+
+        if (
+            str_contains($generatorMeta, 'drupal')
+            || str_contains($xGenerator, 'drupal')
+            || $xDrupalCache !== ''
+            || str_contains($body, 'drupal-settings-json')
+            || str_contains($body, '/sites/default/files')
+            || str_contains($body, '/sites/all/themes/')
+            || str_contains($body, '/sites/all/modules/')
+            || str_contains($body, '/misc/drupal.js')
+        ) {
+            return true;
+        }
+
+        foreach ($probes as $probe) {
+            $path = mb_strtolower((string) ($probe['path'] ?? ''));
+            $status = (int) ($probe['status'] ?? 0);
+
+            if ($status !== 200) {
+                continue;
+            }
+
+            if (
+                in_array($path, [
+                    '/core/lib/drupal.php',
+                    '/core/themes/stable9/version',
+                    '/core/themes/stable10/version',
+                    '/core/themes/stable11/version',
+                    '/core/changelog.txt',
+                ], true)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, array<int, string>> $headers
+     */
+    private function hasWordPressBaseSignature(array $headers, string $body, string $combinedProbeBodies): bool
+    {
+        if (
+            str_contains($body, 'wp-content')
+            || str_contains($body, 'wp-includes')
+            || str_contains(mb_strtolower($combinedProbeBodies), 'wordpress')
+        ) {
+            return true;
+        }
+
+        if (isset($headers['x-pingback']) && str_contains(mb_strtolower(implode(' ', $headers['x-pingback'])), 'xmlrpc.php')) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, array<int, string>> $headers
+     */
+    private function hasWixBaseSignature(array $headers, string $body, string $combinedProbeBodies): bool
+    {
+        $combined = $body . "\n" . mb_strtolower($combinedProbeBodies);
+
+        if (
+            str_contains($combined, 'wixsite')
+            || str_contains($combined, 'wix-code')
+            || str_contains($combined, 'static.parastorage.com')
+            || str_contains($combined, 'wixstatic.com')
+        ) {
+            return true;
+        }
+
+        return isset($headers['x-wix-request-id']) || isset($headers['x-wix-punisher']);
     }
 
     private function extractGeneratorMeta(string $bodyRaw): string
@@ -596,53 +719,80 @@ final class RunTechnologyScanJob implements ShouldQueue
     }
 
     /**
-     * @param array<int, array<string, mixed>> $probes
+     * @return array<string, mixed>
      */
-    private function inferDrupalFallbackVersion(string $bodyRaw, string $combinedProbeBodies, array $probes): string
+    private function extractRedirectContext(Site $site, Response $response, MonitoringHttpClientFactory $httpClientFactory): array
     {
-        $body = mb_strtolower($bodyRaw . "\n" . $combinedProbeBodies);
-        $statusByPath = [];
+        $siteUrl = (string) $site->url;
+        $initialStatus = 0;
+        $initialLocation = null;
 
-        foreach ($probes as $probe) {
-            $path = mb_strtolower((string) ($probe['path'] ?? ''));
+        try {
+            $initialResponse = $httpClientFactory
+                ->make(['Accept' => 'text/html,*/*;q=0.8'])
+                ->withoutRedirecting()
+                ->get($siteUrl);
 
-            if ($path === '') {
-                continue;
-            }
-
-            $statusByPath[$path] = (int) ($probe['status'] ?? 0);
+            $initialStatus = (int) $initialResponse->status();
+            $initialLocation = $initialResponse->header('location');
+        } catch (\Throwable) {
+            // Si falla la sonda inicial, seguimos con la respuesta final ya obtenida.
         }
 
-        $stable10 = $statusByPath['/core/themes/stable10/version'] ?? null;
-        $stable9 = $statusByPath['/core/themes/stable9/version'] ?? null;
-        $starterkit = $statusByPath['/core/themes/starterkit_theme/readme.md'] ?? null;
-        $ckeditor5 = $statusByPath['/core/assets/vendor/ckeditor5/readme.md'] ?? null;
+        $finalStatus = (int) $response->status();
+        $finalUrl = $this->resolveFinalUrl($response, $siteUrl);
+        $initialHost = parse_url($siteUrl, PHP_URL_HOST);
+        $finalHost = parse_url($finalUrl, PHP_URL_HOST);
+        $isExternal = is_string($initialHost)
+            && is_string($finalHost)
+            && $initialHost !== ''
+            && $finalHost !== ''
+            && mb_strtolower($initialHost) !== mb_strtolower($finalHost);
 
-        if (str_contains($body, '/misc/drupal.js') || str_contains($body, '/sites/all/themes/') || str_contains($body, '/sites/all/modules/')) {
-            return '7';
+        return [
+            'initial_url' => $siteUrl,
+            'initial_status' => $initialStatus,
+            'initial_location' => $initialLocation,
+            'final_url' => $finalUrl,
+            'final_status' => $finalStatus,
+            'is_redirect' => in_array($initialStatus, [301, 302, 307, 308], true),
+            'is_external' => $isExternal,
+            'final_accessible' => $finalStatus >= 200 && $finalStatus < 400,
+            'redirect_history' => $this->extractRedirectHistory($response),
+        ];
+    }
+
+    private function resolveFinalUrl(Response $response, string $fallbackUrl): string
+    {
+        $effectiveUrl = method_exists($response, 'effectiveUri') ? (string) $response->effectiveUri() : '';
+
+        if ($effectiveUrl !== '') {
+            return $effectiveUrl;
         }
 
-        if ($stable9 === 404 || str_contains($body, 'core/assets/vendor/jquery.ui/')) {
-            return '8 (Core)';
+        $history = $this->extractRedirectHistory($response);
+
+        if ($history !== []) {
+            $last = end($history);
+
+            return is_string($last) && $last !== '' ? $last : $fallbackUrl;
         }
 
-        if ($stable9 === 200 && ($stable10 === 200 || str_contains($body, '/core/themes/stable10/'))) {
-            return '11 (Core)';
+        return $fallbackUrl;
         }
 
-        if ($stable9 === 200 && ($starterkit === 200 || $ckeditor5 === 200 || str_contains($body, '/core/themes/starterkit_theme/'))) {
-            return '10 (Core)';
+    /**
+     * @return array<int, string>
+     */
+    private function extractRedirectHistory(Response $response): array
+    {
+        $value = $response->header('X-Guzzle-Redirect-History');
+
+        if (! is_string($value) || trim($value) === '') {
+            return [];
         }
 
-        if ($stable9 === 200) {
-            return '9 (Core)';
-        }
-
-        if (str_contains($body, '/core/') || str_contains($body, 'drupal-settings-json') || str_contains($body, '/sites/default/files')) {
-            return 'Moderno (Core)';
-        }
-
-        return 'Sin versión detectable';
+        return array_values(array_filter(array_map(static fn (string $part): string => trim($part), explode(',', $value))));
     }
 
     /**

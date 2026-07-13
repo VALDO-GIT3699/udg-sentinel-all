@@ -22,13 +22,25 @@ if (! function_exists('isTrustedLocalMonitoringOrigin')) {
 }
 
 Route::get('/', function () {
-	return Auth::check()
-		? redirect('/monitoring')
-		: redirect('/login');
+	$requestIp = (string) request()->ip();
+	$isTrustedLocalIp = isTrustedLocalMonitoringOrigin($requestIp);
+
+	if (app()->environment('local') && Auth::guest() && $isTrustedLocalIp) {
+		return redirect()->route('monitoring.local-login');
+	}
+
+	return redirect('/monitoring');
 });
 
 Route::middleware('guest')->group(function () {
 	Route::get('/login', function () {
+		$requestIp = (string) request()->ip();
+		$isTrustedLocalIp = isTrustedLocalMonitoringOrigin($requestIp);
+
+		if (app()->environment('local') && $isTrustedLocalIp) {
+			return redirect()->route('monitoring.local-login');
+		}
+
 		return view('auth.quick-login', [
 			'defaultUser' => (string) env('MONITORING_LOGIN_DEFAULT_USER', 'udgmonitoreo26B'),
 		]);
