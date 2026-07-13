@@ -1,29 +1,60 @@
-# Inventario Oficial UDG
+﻿# <?php echo e($exception->class()); ?> - <?php echo $exception->title(); ?>
 
-Este documento define la fuente maestra institucional que el sistema debe tomar como alcance funcional.
 
-## Alcance
-- Solo deben considerarse los sitios oficiales contenidos en el archivo markdown institucional entregado por el usuario.
-- El inventario operativo no debe crecer por descubrimiento automático fuera de esa fuente.
-- Los datos operativos vivos siguen viniendo de monitoreo en tiempo real, no del archivo fuente.
+<?php echo $exception->message(); ?>
 
-## Columnas esperadas de la fuente
-- Clasificación
-- Entidad
-- Nombre del sitio
-- Dominio
-- Sitio activo
-- CMS
-- IP servidor
-- Certificado de seguridad
-- Estatus proyecto
-- Comentarios
 
-## Reglas de uso
-- El archivo institucional se usa como lista canónica de URLs y metadatos iniciales.
-- El dashboard debe mostrar el inventario con una forma visual parecida a esa fuente.
-- La columna de certificado debe reflejar estado real del monitoreo SSL, no solo texto histórico.
-- El sistema no debe duplicar ni mantener activos fuera del alcance oficial cuando se ejecute la sincronización canónica.
+PHP <?php echo e(PHP_VERSION); ?>
 
-## Importante
-Para sincronizar la lista oficial en la base de datos, el markdown fuente debe estar disponible en el repositorio o en una ruta accesible al runtime del contenedor.
+Laravel <?php echo e(app()->version()); ?>
+
+<?php echo e($exception->request()->httpHost()); ?>
+
+
+## Stack Trace
+
+<?php $__currentLoopData = $exception->frames(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $index => $frame): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+<?php echo e($index); ?> - <?php echo e($frame->file()); ?>:<?php echo e($frame->line()); ?>
+
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+
+## Request
+
+<?php echo e($exception->request()->method()); ?> <?php echo e(\Illuminate\Support\Str::start($exception->request()->path(), '/')); ?>
+
+
+## Headers
+
+<?php $__empty_1 = true; $__currentLoopData = $exception->requestHeaders(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key => $value): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+* **<?php echo e($key); ?>**: <?php echo $value; ?>
+
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+No header data available.
+<?php endif; ?>
+
+## Route Context
+
+<?php $__empty_1 = true; $__currentLoopData = $exception->applicationRouteContext(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $name => $value): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+<?php echo e($name); ?>: <?php echo $value; ?>
+
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+No routing data available.
+<?php endif; ?>
+
+## Route Parameters
+
+<?php if($routeParametersContext = $exception->applicationRouteParametersContext()): ?>
+<?php echo $routeParametersContext; ?>
+
+<?php else: ?>
+No route parameter data available.
+<?php endif; ?>
+
+## Database Queries
+
+<?php $__empty_1 = true; $__currentLoopData = $exception->applicationQueries(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as ['connectionName' => $connectionName, 'sql' => $sql, 'time' => $time]): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+* <?php echo e($connectionName); ?> - <?php echo $sql; ?> (<?php echo e($time); ?> ms)
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+No database queries detected.
+<?php endif; ?>
+<?php /**PATH /var/www/html/vendor/laravel/framework/src/Illuminate/Foundation/Providers/../resources/exceptions/renderer/markdown.blade.php ENDPATH**/ ?>

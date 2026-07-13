@@ -1,168 +1,60 @@
-# ============================================================
-# UDG Sentinel — Docker Compose PRODUCCIÓN
-# URL: https://udgsentinel.udg.mx
-# ============================================================
-# Diferencias clave vs desarrollo:
-#   - Sin mailpit
-#   - Sin bind mount del código (imagen construida)
-#   - Variables desde .env.production (nunca en este archivo)
-#   - Sin exposición de puertos de DB/Redis al host
-#   - Nginx con TLS (cert institucional o Let's Encrypt)
-#   - restart: always
-# ============================================================
-# Uso:
-#   docker compose -f infrastructure/docker/docker-compose.prod.yml up -d
-# ============================================================
+﻿# <?php echo e($exception->class()); ?> - <?php echo $exception->title(); ?>
 
-services:
 
-  # ──────────────────────────────────────────────
-  # PHP-FPM + Laravel App (imagen construida)
-  # ──────────────────────────────────────────────
-  app:
-    image: ghcr.io/valdo-git3699/udg-sentinel:${APP_VERSION:-latest}
-    container_name: sentinel_app
-    restart: always
-    working_dir: /var/www/html
-    environment:
-      APP_ENV: production
-      APP_DEBUG: "false"
-    env_file:
-      - .env.production
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - sentinel_network
-    healthcheck:
-      test: ["CMD", "php", "artisan", "health:check"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+<?php echo $exception->message(); ?>
 
-  # ──────────────────────────────────────────────
-  # Nginx — TLS + Proxy para udgsentinel.udg.mx
-  # ──────────────────────────────────────────────
-  nginx:
-    image: nginx:1.27-alpine
-    container_name: sentinel_nginx
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/sentinel.prod.conf:/etc/nginx/conf.d/default.conf:ro
-      # Certificado TLS institucional (se provee externamente)
-      - /etc/ssl/sentinel:/etc/ssl/sentinel:ro
-      # Assets estáticos de la app (volumen compartido con app)
-      - app_public:/var/www/html/public:ro
-    depends_on:
-      - app
-    networks:
-      - sentinel_network
 
-  # ──────────────────────────────────────────────
-  # PostgreSQL 16 — Sin exposición de puerto al host
-  # ──────────────────────────────────────────────
-  db:
-    image: postgres:16-alpine
-    container_name: sentinel_db
-    restart: always
-    environment:
-      POSTGRES_DB: ${DB_DATABASE}
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - sentinel_db_data:/var/lib/postgresql/data
-      - ./postgres/postgresql.prod.conf:/etc/postgresql/postgresql.conf:ro
-    # Sin exposición de puertos al host en producción
-    networks:
-      - sentinel_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+PHP <?php echo e(PHP_VERSION); ?>
 
-  # ──────────────────────────────────────────────
-  # Redis 7 — Sin exposición de puerto al host
-  # ──────────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: sentinel_redis
-    restart: always
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD} --maxmemory 512mb --maxmemory-policy allkeys-lru
-    volumes:
-      - sentinel_redis_data:/data
-    networks:
-      - sentinel_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+Laravel <?php echo e(app()->version()); ?>
 
-  # ──────────────────────────────────────────────
-  # Laravel Horizon — Workers de colas
-  # ──────────────────────────────────────────────
-  horizon:
-    image: ghcr.io/valdo-git3699/udg-sentinel:${APP_VERSION:-latest}
-    container_name: sentinel_horizon
-    restart: always
-    working_dir: /var/www/html
-    command: php artisan horizon
-    env_file:
-      - .env.production
-    depends_on:
-      - app
-      - redis
-      - db
-    networks:
-      - sentinel_network
+<?php echo e($exception->request()->httpHost()); ?>
 
-  # ──────────────────────────────────────────────
-  # Laravel Scheduler — Cron de recolectores
-  # ──────────────────────────────────────────────
-  scheduler:
-    image: ghcr.io/valdo-git3699/udg-sentinel:${APP_VERSION:-latest}
-    container_name: sentinel_scheduler
-    restart: always
-    working_dir: /var/www/html
-    command: >
-      sh -c "while true; do
-        php artisan schedule:run --verbose --no-interaction;
-        sleep 60;
-      done"
-    env_file:
-      - .env.production
-    depends_on:
-      - app
-      - redis
-      - db
-    networks:
-      - sentinel_network
 
-volumes:
-  sentinel_db_data:
-    name: sentinel_db_data_prod
-    driver: local
-    driver_opts:
-      type: none
-      device: /opt/sentinel/data/postgres
-      o: bind
-  sentinel_redis_data:
-    name: sentinel_redis_data_prod
-  app_public:
-    name: sentinel_app_public
+## Stack Trace
 
-networks:
-  sentinel_network:
-    name: sentinel_network_prod
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/24
+<?php $__currentLoopData = $exception->frames(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $index => $frame): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+<?php echo e($index); ?> - <?php echo e($frame->file()); ?>:<?php echo e($frame->line()); ?>
+
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+
+## Request
+
+<?php echo e($exception->request()->method()); ?> <?php echo e(\Illuminate\Support\Str::start($exception->request()->path(), '/')); ?>
+
+
+## Headers
+
+<?php $__empty_1 = true; $__currentLoopData = $exception->requestHeaders(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key => $value): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+* **<?php echo e($key); ?>**: <?php echo $value; ?>
+
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+No header data available.
+<?php endif; ?>
+
+## Route Context
+
+<?php $__empty_1 = true; $__currentLoopData = $exception->applicationRouteContext(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $name => $value): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+<?php echo e($name); ?>: <?php echo $value; ?>
+
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+No routing data available.
+<?php endif; ?>
+
+## Route Parameters
+
+<?php if($routeParametersContext = $exception->applicationRouteParametersContext()): ?>
+<?php echo $routeParametersContext; ?>
+
+<?php else: ?>
+No route parameter data available.
+<?php endif; ?>
+
+## Database Queries
+
+<?php $__empty_1 = true; $__currentLoopData = $exception->applicationQueries(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as ['connectionName' => $connectionName, 'sql' => $sql, 'time' => $time]): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+* <?php echo e($connectionName); ?> - <?php echo $sql; ?> (<?php echo e($time); ?> ms)
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+No database queries detected.
+<?php endif; ?>
+<?php /**PATH /var/www/html/vendor/laravel/framework/src/Illuminate/Foundation/Providers/../resources/exceptions/renderer/markdown.blade.php ENDPATH**/ ?>

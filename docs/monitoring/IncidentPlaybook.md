@@ -1,75 +1,60 @@
-# Playbook de Incidentes - UDG Sentinel Monitoring
+﻿# <?php echo e($exception->class()); ?> - <?php echo $exception->title(); ?>
 
-## Objetivo
-Guiar la respuesta operativa ante caidas de sitios oficiales, alertas SSL y degradacion del pipeline de monitoreo.
 
-## Severidades
-- Critica: sitio oficial caido o SSL expirado.
-- Alta: degradacion sostenida o SSL <= 7 dias.
-- Media: cabeceras debiles, alertas recurrentes sin impacto directo.
-- Baja: hallazgos informativos o eventos intermitentes.
+<?php echo $exception->message(); ?>
 
-## Flujo de Respuesta
-1. Confirmar alerta en dashboard de monitoreo.
-2. Revisar evidencia: checks recientes, codigo HTTP, latencia, error tecnico.
-3. Correlacionar con eventos de infraestructura (red, DNS, CDN, WAF, certificados).
-4. Escalar segun criticidad a equipo responsable del sitio.
-5. Registrar acciones y tiempos en bitacora operativa.
-6. Cerrar incidente cuando el sitio mantenga recuperacion estable.
 
-## Runbook - Sitio Oficial Caido
-1. Validar si la alerta fue confirmada por fallas consecutivas.
-2. Ejecutar prueba manual HEAD/GET desde operacion.
-3. Verificar:
-   - DNS del dominio.
-   - estado del servidor origen.
-   - vencimiento SSL.
-   - reglas de firewall/WAF.
-4. Si la causa es infraestructura, escalar al equipo de plataforma.
-5. Si la causa es aplicacion, escalar al equipo de desarrollo del sistema.
-6. Confirmar recuperacion y verificar que el evento `site.recovered` se refleje en dashboard.
+PHP <?php echo e(PHP_VERSION); ?>
 
-## Runbook - SSL Critico o Expirado
-1. Revisar `days_remaining`, emisor, CN y SAN.
-2. Confirmar cadena de certificados y fecha de renovacion esperada.
-3. Escalar a responsable de certificados si <= 7 dias.
-4. Si expirado, activar ventana de atencion inmediata.
-5. Tras renovacion, validar nueva lectura SSL y cierre de alerta.
+Laravel <?php echo e(app()->version()); ?>
 
-## Runbook - Degradacion de Pipeline
-1. Revisar Horizon: colas, throughput, retries, failed jobs.
-2. Validar profundidad de colas de monitoreo:
-   - monitoring-uptime
-   - monitoring-ssl
-   - monitoring-tech
-   - monitoring-headers
-   - monitoring-alerts
-3. Ajustar concurrencia si hay backlog sostenido.
-4. Revisar logs de errores de jobs en `storage/logs`.
+<?php echo e($exception->request()->httpHost()); ?>
 
-## SLAs Operativos Recomendados
-- Deteccion a ack inicial:
-  - Critica: <= 5 min
-  - Alta: <= 15 min
-  - Media/Baja: <= 60 min
-- Actualizacion de estado a stakeholders:
-  - Critica: cada 15 min
-  - Alta: cada 30 min
 
-## Checklist de Cierre
-- Causa raiz identificada.
-- Mitigacion aplicada.
-- Verificacion de estabilidad (al menos 2 checks exitosos consecutivos).
-- Alertas resueltas o justificadas.
-- Lecciones aprendidas documentadas.
+## Stack Trace
 
-## Comandos Operativos
-- Listar rutas de monitoreo:
-  - `php artisan route:list --path=monitoring`
-- Listar comandos del pipeline:
-  - `php artisan list monitoring`
-- Ejecutar despacho manual de checks:
-  - `php artisan monitoring:dispatch-head-checks --limit=200`
-  - `php artisan monitoring:dispatch-ssl-checks --limit=200`
-  - `php artisan monitoring:dispatch-security-headers-checks --limit=200`
-  - `php artisan monitoring:dispatch-technology-scans --limit=200`
+<?php $__currentLoopData = $exception->frames(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $index => $frame): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+<?php echo e($index); ?> - <?php echo e($frame->file()); ?>:<?php echo e($frame->line()); ?>
+
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+
+## Request
+
+<?php echo e($exception->request()->method()); ?> <?php echo e(\Illuminate\Support\Str::start($exception->request()->path(), '/')); ?>
+
+
+## Headers
+
+<?php $__empty_1 = true; $__currentLoopData = $exception->requestHeaders(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key => $value): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+* **<?php echo e($key); ?>**: <?php echo $value; ?>
+
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+No header data available.
+<?php endif; ?>
+
+## Route Context
+
+<?php $__empty_1 = true; $__currentLoopData = $exception->applicationRouteContext(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $name => $value): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+<?php echo e($name); ?>: <?php echo $value; ?>
+
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+No routing data available.
+<?php endif; ?>
+
+## Route Parameters
+
+<?php if($routeParametersContext = $exception->applicationRouteParametersContext()): ?>
+<?php echo $routeParametersContext; ?>
+
+<?php else: ?>
+No route parameter data available.
+<?php endif; ?>
+
+## Database Queries
+
+<?php $__empty_1 = true; $__currentLoopData = $exception->applicationQueries(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as ['connectionName' => $connectionName, 'sql' => $sql, 'time' => $time]): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+* <?php echo e($connectionName); ?> - <?php echo $sql; ?> (<?php echo e($time); ?> ms)
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+No database queries detected.
+<?php endif; ?>
+<?php /**PATH /var/www/html/vendor/laravel/framework/src/Illuminate/Foundation/Providers/../resources/exceptions/renderer/markdown.blade.php ENDPATH**/ ?>
