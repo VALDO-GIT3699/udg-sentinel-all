@@ -151,10 +151,15 @@
 <body>
     <main class="page">
         <header class="header">
-            <div>
-                <p class="eyebrow">UDG Sentinel</p>
-                <h1>Reporte operativo de Monitoring</h1>
-                <p class="meta">Resumen fiel al panel actual: inventario, vencimientos preventivos y estados de diagnóstico.</p>
+            <div style="display:flex; gap:16px; align-items:flex-start;">
+                @if ($logo_data_uri)
+                    <img src="{{ $logo_data_uri }}" alt="Universidad de Guadalajara" style="height:56px; width:56px; object-fit:contain;">
+                @endif
+                <div>
+                    <p class="eyebrow">Universidad de Guadalajara · Coordinación General de Tecnologías Administrativas</p>
+                    <h1>Reporte de estado de sitios web institucionales</h1>
+                    <p class="meta">Un resumen claro de cómo están los sitios web de la universidad ahora mismo: cuáles funcionan bien, cuáles necesitan atención y por qué.</p>
+                </div>
             </div>
             <div class="meta">
                 <p><strong>Generado:</strong> {{ $generated_at }}</p>
@@ -207,14 +212,28 @@
             </article>
 
             <article class="card">
-                <h2>Notas de operación</h2>
-                <p class="note">Este PDF refleja el mismo inventario y los mismos vencimientos que ves en el dashboard, sin métricas ajenas al módulo de Monitoring.</p>
-                <p class="note">Secciones incluidas: estado general, certificados a renovar, últimos escaneos y muestra del inventario monitoreado.</p>
+                <h2>Sobre este reporte</h2>
+                <p class="note">Estas cifras son las mismas que ves en el panel de monitoreo en este momento — no son un estimado ni una muestra.</p>
+                <p class="note">El reporte incluye: estado general, certificados de seguridad por renovar, últimos escaneos realizados, el inventario completo de sitios y una guía para entender las alertas más comunes.</p>
             </article>
         </section>
 
+        @if (! empty($alert_glossary))
+            <section class="section card">
+                <h2>¿Qué significan las alertas que aparecen abajo?</h2>
+                <p class="note">Explicación en palabras simples de cada tipo de alerta detectada, y qué podría pasar si no se corrige.</p>
+                @foreach ($alert_glossary as $entry)
+                    <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--line);">
+                        <p style="margin:0 0 4px; font-weight:700; font-size:14px;">{{ $entry['title'] }}</p>
+                        <p class="note" style="margin:0 0 6px;">{{ $entry['explanation'] }}</p>
+                        <p class="note" style="margin:0;"><strong>¿Qué podría pasar si no se corrige?</strong> {{ $entry['consequence'] }}</p>
+                    </div>
+                @endforeach
+            </section>
+        @endif
+
         <section class="section card">
-            <h2>Calendario de vencimientos preventivos</h2>
+            <h2>Certificados de seguridad por renovar</h2>
             @if (empty($preventive_expirations))
                 <p class="note">No hay certificados que expiren dentro de la ventana configurada.</p>
             @else
@@ -255,7 +274,6 @@
                             <th>Dominio</th>
                             <th>Tecnología</th>
                             <th>Certificado</th>
-                            <th>Estado</th>
                             <th>Diagnóstico</th>
                             <th>Último check</th>
                         </tr>
@@ -267,9 +285,8 @@
                                 <td>{{ $site['domain'] }}</td>
                                 <td>{{ $site['technology'] }}</td>
                                 <td>{{ $site['certificate'] }}</td>
-                                <td><span class="badge {{ $site['status'] === 'down' ? 'critical' : ($site['status'] === 'degraded' ? 'high' : 'low') }}">{{ strtoupper($site['status_label']) }}</span></td>
                                 <td>
-                                    <strong>{{ $site['diagnostic_label'] }}</strong><br>
+                                    <span class="badge {{ $site['status'] === 'down' ? 'critical' : ($site['status'] === 'degraded' ? 'high' : 'low') }}">{{ $site['diagnostic_label'] }}</span><br>
                                     <span class="meta">{{ $site['diagnostic_reason'] }}</span>
                                 </td>
                                 <td>{{ $site['last_checked_at'] ? \Illuminate\Support\Carbon::parse($site['last_checked_at'])->format('d/m/Y H:i') : 'Sin dato' }}</td>

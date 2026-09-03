@@ -11,14 +11,14 @@
           </p>
         </div>
         <div class="flex items-center gap-3">
-          <a
-            :href="reportUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-800 transition hover:border-cyan-300"
+          <button
+            type="button"
+            class="rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-800 transition hover:border-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="isExporting"
+            @click="exportDashboardPdf"
           >
-            Abrir reporte ejecutivo
-          </a>
+            {{ isExporting ? 'Exportando...' : 'Exportar PDF Editable' }}
+          </button>
           <p class="text-xs text-slate-600">Actualizado: {{ formatDate(updatedAt) }}</p>
         </div>
       </header>
@@ -252,11 +252,42 @@ type ChartData = {
 const props = defineProps<{
   summary: Summary
   chartDataUrl: string
-  reportUrl: string
   updatedAt: string
 }>()
 
 const chartData = ref<ChartData | null>(null)
+const isExporting = ref(false)
+
+const exportDashboardPdf = async () => {
+  isExporting.value = true
+
+  try {
+    const response = await fetch('/monitoring/dashboard/export-report', {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'application/pdf',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const blob = await response.blob()
+    const objectUrl = window.URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = objectUrl
+    anchor.download = `UDG_Sentinel_Reporte_General_${new Date().toISOString().slice(0, 10).replaceAll('-', '_')}.pdf`
+    anchor.click()
+    window.URL.revokeObjectURL(objectUrl)
+  } catch {
+    // El boton vuelve a estar disponible; no hay mas UI de mensajes en esta pagina.
+  } finally {
+    isExporting.value = false
+  }
+}
 
 const formatDate = (value: string): string => {
   return new Intl.DateTimeFormat('es-MX', {

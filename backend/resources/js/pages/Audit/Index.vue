@@ -72,10 +72,12 @@
                   {{ entry.subject_type ? `${entry.subject_type} #${entry.subject_id}` : '-' }}
                 </td>
                 <td class="px-4 py-4">
-                  <details v-if="Object.keys(entry.properties).length > 0">
-                    <summary class="cursor-pointer text-xs text-cyan-600">Ver</summary>
-                    <pre class="mt-2 max-w-xs overflow-x-auto rounded-lg bg-sky-50/60 p-2 text-[11px] text-slate-700">{{ JSON.stringify(entry.properties, null, 2) }}</pre>
-                  </details>
+                  <dl v-if="visibleDetails(entry.properties).length > 0" class="space-y-1 text-xs">
+                    <div v-for="detail in visibleDetails(entry.properties)" :key="detail.label" class="flex gap-1.5">
+                      <dt class="font-medium text-slate-600">{{ detail.label }}:</dt>
+                      <dd class="text-slate-800">{{ detail.value }}</dd>
+                    </div>
+                  </dl>
                   <span v-else class="text-xs text-slate-400">-</span>
                 </td>
               </tr>
@@ -167,6 +169,83 @@ const formatDate = (value: string | null) => {
   }
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString('es-MX')
+}
+
+// Claves internas de plomería que no aportan nada al lector (ya se ve la
+// acción en la columna "Acción") o que son el contenedor de un diff de
+// atributos -ese caso se aplana aparte en vez de mostrarse como bloque.
+const HIDDEN_PROPERTY_KEYS = new Set(['action'])
+
+const KEY_LABELS: Record<string, string> = {
+  filename: 'Archivo',
+  size_bytes: 'Tamaño',
+  error: 'Error',
+  url: 'URL',
+  email: 'Correo',
+  user_id: 'ID de usuario',
+  before: 'Antes',
+  after: 'Después',
+  event: 'Evento',
+  resolved_alerts: 'Alertas resueltas',
+  enabled: 'Activado',
+  name: 'Nombre',
+  department: 'Departamento',
+  is_active: 'Activo',
+}
+
+const humanizeKey = (key: string): string =>
+  KEY_LABELS[key] ??
+  key
+    .replace(/_/g, ' ')
+    .replace(/^./, (letter) => letter.toUpperCase())
+
+const formatScalar = (key: string, value: unknown): string => {
+  if (value === null || value === undefined || value === '') {
+    return '—'
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'Sí' : 'No'
+  }
+  if (key === 'size_bytes' && typeof value === 'number') {
+    return value >= 1024 * 1024
+      ? `${(value / (1024 * 1024)).toFixed(1)} MB`
+      : `${(value / 1024).toFixed(1)} KB`
+  }
+  return String(value)
+}
+
+type DetailRow = { label: string; value: string }
+
+// Aplana un nivel de anidamiento (los diffs "attributes"/"old" que dejo el
+// registro automático de cambios de usuario) para que cada campo cambiado
+// aparezca como su propia fila, en vez de un bloque tipo JSON.
+const visibleDetails = (properties: Record<string, unknown>): DetailRow[] => {
+  const rows: DetailRow[] = []
+
+  for (const [key, value] of Object.entries(properties)) {
+    if (HIDDEN_PROPERTY_KEYS.has(key)) {
+      continue
+    }
+
+    if ((key === 'attributes' || key === 'old') && value !== null && typeof value === 'object') {
+      const prefix = key === 'old' ? 'Antes de' : 'Nuevo'
+      for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+        rows.push({
+          label: `${prefix} ${humanizeKey(nestedKey).toLowerCase()}`,
+          value: formatScalar(nestedKey, nestedValue),
+        })
+      }
+      continue
+    }
+
+    if (value !== null && typeof value === 'object') {
+      continue
+    }
+
+    rows.push({ label: humanizeKey(key), value: formatScalar(key, value) })
+  }
+
+  return rows
 }
 
 const applyFilters = () => {

@@ -8,6 +8,7 @@ use App\Contracts\Repositories\AlertRepositoryInterface;
 use App\Contracts\Repositories\SiteCheckRepositoryInterface;
 use App\Contracts\Repositories\SiteRepositoryInterface;
 use App\Http\Controllers\Controller;
+use App\Models\Alert;
 use App\Models\MonitoringMassScanRun;
 use App\Models\Setting;
 use App\Models\Site;
@@ -21,13 +22,13 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response;
 use Modules\Monitoring\Jobs\DispatchMassScanRunJob;
+use Modules\Monitoring\Support\AlertGlossary;
 use Modules\Monitoring\Support\DetectedTechnology;
 use Modules\Monitoring\Support\MassScanProgress;
 
@@ -67,8 +68,6 @@ final class DashboardController extends Controller
 
     public function index(Request $request): Response
     {
-        $this->warmTelemetryPipeline();
-
         $filters = [
             'status' => $request->string('status')->toString() ?: 'all',
             'group_id' => $request->integer('group_id') ?: null,
@@ -467,39 +466,6 @@ final class DashboardController extends Controller
         ]);
     }
 
-    private function warmTelemetryPipeline(): void
-    {
-        if (! app()->environment(['local', 'development'])) {
-            return;
-        }
-
-        if (! Cache::add('monitoring:dashboard:warmup', now()->timestamp, 60)) {
-            return;
-        }
-
-        app()->terminating(function (): void {
-            $this->dispatchWarmupCommands();
-        });
-    }
-
-    private function dispatchWarmupCommands(): void
-    {
-        $commands = [
-            ['monitoring:dispatch-head-checks', ['--limit' => 50, '--chunk' => 25, '--stagger' => 0]],
-            ['monitoring:dispatch-ssl-checks', ['--limit' => 50, '--chunk' => 25, '--stagger' => 0]],
-            ['monitoring:dispatch-security-headers-checks', ['--limit' => 50, '--chunk' => 25, '--stagger' => 0]],
-            ['monitoring:dispatch-technology-scans', ['--limit' => 50]],
-        ];
-
-        foreach ($commands as [$command, $arguments]) {
-            try {
-                Artisan::call($command, $arguments);
-            } catch (\Throwable) {
-                // El warm-up es opcional y no debe romper el request del dashboard.
-            }
-        }
-    }
-
     /**
      * @return array<int, array<string, mixed>>
      */
@@ -554,11 +520,18 @@ final class DashboardController extends Controller
     {
         $statusCounts = $this->dashboardStatusCounts();
         $diagnosticBreakdown = $this->diagnosticBreakdown();
+        $openAlertTitles = Alert::query()
+            ->whereIn('status', ['open', 'acknowledged'])
+            ->distinct()
+            ->pluck('title')
+            ->map(static fn (mixed $title): string => (string) $title)
+            ->all();
+        $alertGlossary = AlertGlossary::forTitles($openAlertTitles);
         $preventiveExpirations = array_slice($this->preventiveExpirations(), 0, 12);
         $recentRuns = array_slice($this->massScanHistory(), 0, 8);
 
         $sites = Site::query()
-            ->with(['inspectionProfile'])
+            ->with(['inspectionProfile', 'siteTechnologies.technology', 'cmsDetail'])
             ->orderByRaw('LOWER(name)')
             ->orderBy('name')
             ->orderBy('id')
@@ -586,12 +559,39 @@ final class DashboardController extends Controller
 
         return [
             'generated_at' => now()->toIso8601String(),
+            'logo_data_uri' => $this->udgLogoDataUri(),
             'status_counts' => $statusCounts,
             'diagnostic_breakdown' => $diagnosticBreakdown,
             'preventive_expirations' => $preventiveExpirations,
             'recent_runs' => $recentRuns,
             'sites' => $sites,
+            'alert_glossary' => $alertGlossary,
         ];
+    }
+
+    /**
+     * El logo se embebe como data URI (no como <img src="url">) para que
+     * DomPDF nunca dependa de una peticion de red al renderizar el PDF -sin
+     * esto, el logo se veia en la pantalla pero desaparecia en el PDF
+     * generado, ya que DomPDF no comparte cookies/sesion con el navegador.
+     */
+    private function udgLogoDataUri(): ?string
+    {
+        return Cache::rememberForever('monitoring:pdf:logo-data-uri', function (): ?string {
+            $path = public_path('images/universidad-de-guadalajara-logo-png_seeklogo-617642.png');
+
+            if (! is_file($path)) {
+                return null;
+            }
+
+            $contents = file_get_contents($path);
+
+            if ($contents === false) {
+                return null;
+            }
+
+            return 'data:image/png;base64,'.base64_encode($contents);
+        });
     }
 
     private function scanAllResponse(
@@ -1023,8 +1023,13 @@ final class DashboardController extends Controller
                 'sin_actualizar' => 0,
             ];
 
+            // inspectionSnapshot() -> resolveTechnologyInfo() tambien lee
+            // siteTechnologies.technology y cmsDetail (ademas de
+            // inspectionProfile) para cada sitio. Sin precargarlas aqui, cada
+            // una de las ~419 filas dispara sus propias queries perezosas -
+            // un N+1 real que convertia esta sola llamada en miles de queries.
             $sites = Site::query()
-                ->with('inspectionProfile')
+                ->with(['inspectionProfile', 'siteTechnologies.technology', 'cmsDetail'])
                 ->get();
 
             foreach ($sites as $site) {

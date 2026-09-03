@@ -559,26 +559,20 @@ parameters:
 			path: Modules/Inventory/app/Services/Classification/Rules/ContentSignatureRule.php
 
 		-
-			message: '#^Offset ''correo_institucional'' on array\{\} on left side of \?\? does not exist\.$#'
+			message: '#^Offset ''web_application'' on array\{website\: 0\.6\|1\.4\} on left side of \?\? does not exist\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: Modules/Inventory/app/Services/Classification/Rules/DnsSslRule.php
 
 		-
-			message: '#^Offset ''mail_server'' on array\{\} on left side of \?\? does not exist\.$#'
+			message: '#^Offset ''website'' on array\{\} on left side of \?\? does not exist\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: Modules/Inventory/app/Services/Classification/Rules/DnsSslRule.php
 
 		-
-			message: '#^Offset ''web_application'' on array\{mail_server\?\: 3\.0, website\: 0\.6\|1\.4\} on left side of \?\? does not exist\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: Modules/Inventory/app/Services/Classification/Rules/DnsSslRule.php
-
-		-
-			message: '#^Offset ''website'' on array\{\}\|array\{mail_server\: 3\.0\} on left side of \?\? does not exist\.$#'
-			identifier: nullCoalesce.offset
+			message: '#^Strict comparison using \=\=\= between array\{\} and array\{\} will always evaluate to true\.$#'
+			identifier: identical.alwaysTrue
 			count: 1
 			path: Modules/Inventory/app/Services/Classification/Rules/DnsSslRule.php
 
@@ -1329,6 +1323,12 @@ parameters:
 		-
 			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<\(int\|string\),mixed\>\:\:map\(\) contains unresolvable type\.$#'
 			identifier: argument.unresolvableType
+			count: 1
+			path: Modules/Monitoring/app/Http/Controllers/DashboardController.php
+
+		-
+			message: '#^Parameter \#1 \$column of method Illuminate\\Database\\Eloquent\\Builder\<App\\Models\\Alert\>\:\:pluck\(\) expects Illuminate\\Contracts\\Database\\Query\\Expression\|model property of App\\Models\\Alert, string given\.$#'
+			identifier: argument.type
 			count: 1
 			path: Modules/Monitoring/app/Http/Controllers/DashboardController.php
 
@@ -3601,9 +3601,21 @@ parameters:
 			path: app/Contracts/Repositories/SiteRepositoryInterface.php
 
 		-
+			message: '#^Access to an undefined property App\\Models\\User\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Http/Controllers/TwoFactorAuthenticationController.php
+
+		-
 			message: '#^Access to an undefined property App\\Models\\User\:\:\$notify_on_critical_incidents\.$#'
 			identifier: property.notFound
 			count: 1
+			path: app/Http/Controllers/TwoFactorAuthenticationController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\User\:\:\$updated_at\.$#'
+			identifier: property.notFound
+			count: 3
 			path: app/Http/Controllers/TwoFactorAuthenticationController.php
 
 		-

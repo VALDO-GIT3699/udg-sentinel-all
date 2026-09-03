@@ -86,8 +86,6 @@ const kpiCards = computed(() => [
   { label: 'Salud institucional', value: `${summary.kpis.institutional_health_pct}%` },
   { label: 'Disponibilidad 24h', value: `${summary.kpis.availability_24h_pct}%` },
   { label: 'Cobertura inventario', value: `${summary.kpis.inventory_coverage_pct}%` },
-  { label: 'Alertas abiertas', value: summary.kpis.open_alerts },
-  { label: 'Incidentes abiertos', value: summary.kpis.open_incidents },
   { label: 'Activos totales', value: summary.kpis.assets_total },
 ])
 

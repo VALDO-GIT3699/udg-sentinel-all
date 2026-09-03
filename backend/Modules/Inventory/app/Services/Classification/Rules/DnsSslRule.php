@@ -20,14 +20,17 @@ final class DnsSslRule implements AssetClassificationRuleInterface
         $evidence = [];
 
         $dns = $fingerprint->dns;
-        $mxRecords = (int) ($dns['mx_count'] ?? 0);
 
-        if ($mxRecords > 0) {
-            $typeScores['mail_server'] = ($typeScores['mail_server'] ?? 0.0) + 3.0;
-            $roleScores['correo_institucional'] = ($roleScores['correo_institucional'] ?? 0.0) + 2.8;
-            $evidence[] = 'mx_records';
-        }
-
+        // Nota: se elimino a proposito la puntuacion "tiene MX -> es correo
+        // institucional". El MX se configura a nivel de zona DNS, no de sitio:
+        // casi cualquier subdominio *.udg.mx hereda el MX real de udg.mx sin
+        // que el sitio en si tenga nada que ver con correo. Esto etiquetaba
+        // ~1 de cada 3 sitios (bibliotecas, centros universitarios, paginas
+        // institucionales normales) como "correo_institucional" solo por
+        // heredar esa zona. La deteccion real de webmail vive en
+        // HostnameHeuristicRule (host empieza con mail./correo.) y deberia
+        // reforzarse con ContentSignatureRule si se detecta una firma de
+        // interfaz de webmail real (Roundcube, Zimbra, OWA, etc.).
         if (($dns['a_count'] ?? 0) > 0 || ($dns['aaaa_count'] ?? 0) > 0) {
             $typeScores['website'] = ($typeScores['website'] ?? 0.0) + 0.8;
             $evidence[] = 'address_records';

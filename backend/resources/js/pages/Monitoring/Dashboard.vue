@@ -24,14 +24,6 @@
       <section class="mb-5 flex flex-wrap items-center gap-3">
         <button
           type="button"
-          class="glass-btn h-11 whitespace-nowrap rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-5 text-sm font-semibold text-cyan-800 backdrop-blur-md transition hover:border-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="isExporting"
-          @click="exportDashboardPdf"
-        >
-          {{ isExporting ? 'Exportando...' : 'Exportar PDF Editable' }}
-        </button>
-        <button
-          type="button"
           class="glass-btn h-11 whitespace-nowrap rounded-xl border border-amber-400/50 bg-amber-500/10 px-5 text-sm font-semibold text-amber-800 backdrop-blur-md transition hover:border-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
           :disabled="isMassScanRunning"
           @click="scanAllSites"
@@ -1065,7 +1057,6 @@
   const preventiveExpirationsNormalized = computed<PreventiveExpirationItem[]>(() =>
     Array.isArray(props.preventiveExpirations) ? props.preventiveExpirations : [],
   )
-  const isExporting = ref(false)
   const showAllUrgentCertificates = ref(false)
   const preventiveExpirationsSorted = computed<PreventiveExpirationItem[]>(() => {
     return [...preventiveExpirationsNormalized.value].sort(
@@ -1659,37 +1650,6 @@
 
     actionMessage.value = `Iniciando escaneo de ${selectedSiteIds.value.length} sitio(s) seleccionados...`
     void startSelectedScanRequest()
-  }
-
-  const exportDashboardPdf = async () => {
-    isExporting.value = true
-
-    try {
-      const response = await fetch('/monitoring/dashboard/export-report', {
-        method: 'GET',
-        credentials: 'same-origin',
-        headers: {
-          Accept: 'application/pdf',
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-
-      const blob = await response.blob()
-      const objectUrl = window.URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = objectUrl
-      anchor.download = `UDG_Sentinel_Reporte_General_${new Date().toISOString().slice(0, 10).replaceAll('-', '_')}.pdf`
-      anchor.click()
-      window.URL.revokeObjectURL(objectUrl)
-    } catch {
-      actionMessage.value = 'No se pudo exportar el PDF en este momento.'
-    } finally {
-      isExporting.value = false
-    }
   }
 
   const getCsrfToken = () => {
@@ -2509,7 +2469,7 @@
       x: { format: 'HH:mm' },
       y: { formatter: (value: number) => `${value.toFixed(0)} ms` },
     },
-    noData: { text: 'Esperando muestras de latencia...', style: { color: '#64748B' } },
+    noData: { text: '', style: { color: '#64748B' } },
   }))
 
   const fetchLatencyTimeseries = async () => {

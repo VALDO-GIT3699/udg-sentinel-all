@@ -155,17 +155,6 @@
                         Conexión cifrada · acceso restringido a personal autorizado
                     </p>
 
-                    @if ($showLocalQuickAccess ?? false)
-                        <div class="mt-4 border-t border-slate-900/10 pt-4 text-center">
-                            <p class="mb-2 text-[0.7rem] uppercase tracking-wide text-slate-500">Solo entorno local</p>
-                            <a
-                                href="{{ route('monitoring.local-login') }}"
-                                class="glass-btn inline-flex h-9 items-center justify-center rounded-lg border-slate-900/10 px-4 text-xs font-medium text-slate-600 hover:border-slate-900/25 hover:text-slate-900"
-                            >
-                                Acceso rápido de desarrollo
-                            </a>
-                        </div>
-                    @endif
                 </div>
 
                 <p class="mt-6 text-center text-xs text-slate-500">

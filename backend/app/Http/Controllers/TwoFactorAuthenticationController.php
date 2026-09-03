@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -32,6 +33,8 @@ final class TwoFactorAuthenticationController extends Controller
             // confundiria mas de lo que ayuda.
             'isAdmin' => $user->can('monitoring.manage_users'),
             'notifyOnCriticalIncidents' => (bool) $user->notify_on_critical_incidents,
+            'username' => $user->email,
+            'credentialsUpdatedAt' => optional($user->updated_at)?->toIso8601String(),
         ]);
     }
 
@@ -44,6 +47,49 @@ final class TwoFactorAuthenticationController extends Controller
         $user->forceFill(['notify_on_critical_incidents' => (bool) $validated['enabled']])->save();
 
         return response()->json(['message' => 'Preferencia de notificaciones actualizada.']);
+    }
+
+    public function updateCredentials(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'current_password' => ['required', 'string', 'current_password'],
+            'username' => ['required', 'string', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'password' => ['nullable', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $changes = [];
+
+        if ($validated['username'] !== $user->email) {
+            $changes['email'] = $validated['username'];
+        }
+
+        $passwordChanged = isset($validated['password']) && $validated['password'] !== '';
+
+        if ($passwordChanged) {
+            $changes['password'] = $validated['password'];
+        }
+
+        if ($changes === []) {
+            return response()->json(['message' => 'No hay cambios que guardar.', 'username' => $user->email, 'updated_at' => optional($user->updated_at)?->toIso8601String()]);
+        }
+
+        $user->forceFill($changes)->save();
+
+        activity()->causedBy($user)->performedOn($user)
+            ->log($passwordChanged
+                ? 'Actualizó su nombre de usuario y contraseña desde "Mi cuenta"'
+                : 'Actualizó su nombre de usuario desde "Mi cuenta"');
+
+        return response()->json([
+            'message' => $passwordChanged
+                ? 'Usuario y contraseña actualizados correctamente.'
+                : 'Nombre de usuario actualizado correctamente.',
+            'username' => $user->email,
+            'updated_at' => optional($user->fresh()?->updated_at)?->toIso8601String(),
+        ]);
     }
 
     public function enable(Request $request): JsonResponse

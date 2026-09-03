@@ -7,6 +7,7 @@ namespace Tests\Feature\Auth;
 use App\Models\User;
 use App\Services\TwoFactorAuthenticationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use PHPUnit\Framework\Attributes\Test;
 use PragmaRX\Google2FA\Google2FA;
 use Spatie\Permission\Models\Permission;
@@ -164,6 +165,54 @@ final class TwoFactorAuthenticationTest extends TestCase
 
         $response->assertOk();
         $this->assertFalse($admin->refresh()->notify_on_critical_incidents);
+    }
+
+    #[Test]
+    public function a_user_can_change_their_username_and_password_with_current_password_confirmation(): void
+    {
+        $user = $this->userWithDashboardAccess();
+
+        $response = $this->actingAs($user)->patchJson('/account/credentials', [
+            'username' => 'nuevo-usuario',
+            'password' => 'nueva-clave-larga',
+            'password_confirmation' => 'nueva-clave-larga',
+            'current_password' => 'password',
+        ]);
+
+        $response->assertOk();
+
+        $user->refresh();
+        $this->assertSame('nuevo-usuario', $user->email);
+        $this->assertTrue(Hash::check('nueva-clave-larga', $user->password));
+    }
+
+    #[Test]
+    public function changing_credentials_requires_the_current_password(): void
+    {
+        $user = $this->userWithDashboardAccess();
+
+        $response = $this->actingAs($user)->patchJson('/account/credentials', [
+            'username' => 'otro-usuario',
+            'current_password' => 'wrong-password',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertNotSame('otro-usuario', $user->refresh()->email);
+    }
+
+    #[Test]
+    public function changing_the_password_requires_the_confirmation_to_match(): void
+    {
+        $user = $this->userWithDashboardAccess();
+
+        $response = $this->actingAs($user)->patchJson('/account/credentials', [
+            'username' => $user->email,
+            'password' => 'nueva-clave-larga',
+            'password_confirmation' => 'no-coincide',
+            'current_password' => 'password',
+        ]);
+
+        $response->assertStatus(422);
     }
 
     private function userWithDashboardAccess(): User

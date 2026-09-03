@@ -10,25 +10,11 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
-use Symfony\Component\HttpFoundation\IpUtils;
 
 // Paginas legales: publicas a proposito (enlazadas desde el footer y el aviso
 // de cookies, visibles incluso antes de iniciar sesion), sin datos sensibles.
 Route::get('/legal/privacidad', fn () => Inertia::render('Legal/Privacidad'))->name('legal.privacidad');
 Route::get('/legal/terminos', fn () => Inertia::render('Legal/Terminos'))->name('legal.terminos');
-
-if (! function_exists('isTrustedLocalMonitoringOrigin')) {
-    function isTrustedLocalMonitoringOrigin(string $ip): bool
-    {
-        return IpUtils::checkIp($ip, [
-            '127.0.0.1',
-            '::1',
-            '10.0.0.0/8',
-            '172.16.0.0/12',
-            '192.168.0.0/16',
-        ]);
-    }
-}
 
 Route::get('/', function () {
     if (Auth::guest()) {
@@ -40,16 +26,10 @@ Route::get('/', function () {
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', function () {
-        $requestIp = (string) request()->ip();
-
-        // El formulario de acceso real SIEMPRE se muestra, sin importar el entorno.
-        // El atajo de autologin local (mismas cuentas, mismos permisos) queda como
-        // un boton visible y explicito dentro de la propia pagina -nunca como una
-        // redireccion silenciosa que oculte el login- y solo aparece si el entorno
-        // es local y la IP es de red privada, exactamente igual que antes.
+        // El acceso SIEMPRE es con usuario y contraseña, sin atajos ni bypass
+        // visibles en esta pantalla -sin excepcion de entorno.
         return view('auth.quick-login', [
             'defaultUser' => (string) env('MONITORING_LOGIN_DEFAULT_USER', 'udgmonitoreo26B'),
-            'showLocalQuickAccess' => app()->environment('local') && isTrustedLocalMonitoringOrigin($requestIp),
         ]);
     })->name('login');
 
@@ -150,6 +130,8 @@ Route::middleware('auth')->group(function () {
         ->name('two-factor.recovery-codes');
     Route::patch('/account/notification-preference', [TwoFactorAuthenticationController::class, 'updateNotificationPreference'])
         ->name('account.notification-preference');
+    Route::patch('/account/credentials', [TwoFactorAuthenticationController::class, 'updateCredentials'])
+        ->name('account.credentials');
 });
 
 Route::post('/logout', function (Request $request) {

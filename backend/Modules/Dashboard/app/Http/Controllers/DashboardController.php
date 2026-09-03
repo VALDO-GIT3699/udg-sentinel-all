@@ -28,7 +28,6 @@ final class DashboardController extends Controller
         return Inertia::render('Dashboard/Index', [
             'summary' => $this->buildSummary(),
             'chartDataUrl' => route('dashboard.chart-data', $request->query()),
-            'reportUrl' => route('dashboard.executive-report', $request->query()),
             'updatedAt' => now()->toIso8601String(),
         ]);
     }

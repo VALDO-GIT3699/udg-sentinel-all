@@ -28,6 +28,12 @@ final class AuditController extends Controller
 
         $entries = Activity::query()
             ->with('causer:id,name,email')
+            // El registro de auditoria es para acciones de administracion (quien
+            // hizo que), no para telemetria automatica. Las transiciones de
+            // estado y resoluciones de alerta se registran aparte con
+            // log_name 'monitoring' -miles de filas por dia- y ahogaban por
+            // completo las acciones reales si se mostraban aqui.
+            ->where('log_name', '!=', 'monitoring')
             ->when($search !== '', function ($query) use ($search, $caseInsensitiveLike): void {
                 $query->where('description', $caseInsensitiveLike, '%'.$search.'%');
             })

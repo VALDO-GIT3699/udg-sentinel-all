@@ -3,18 +3,29 @@
     <div class="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
       <div class="absolute -left-40 -top-48 h-[34rem] w-[34rem] rounded-full bg-sky-300/25 blur-[130px]" />
       <div class="absolute -right-32 top-1/4 h-[30rem] w-[30rem] rounded-full bg-blue-300/20 blur-[130px]" />
+      <div class="absolute bottom-[-10rem] left-1/3 h-[28rem] w-[28rem] rounded-full bg-emerald-300/15 blur-[130px]" />
     </div>
 
     <section class="relative z-10 mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
       <TopNav current="dashboard" />
-      <Breadcrumbs :items="[{ label: 'Seguridad de mi cuenta' }]" />
+      <Breadcrumbs :items="[{ label: 'Mi cuenta' }]" />
 
-      <header class="mb-8">
-        <p class="text-xs uppercase tracking-[0.22em] text-cyan-600">UDG Sentinel</p>
-        <h1 class="mt-2 text-fluid-2xl font-semibold text-slate-900">Seguridad de mi cuenta</h1>
-        <p class="mt-2 max-w-2xl text-sm text-slate-700">
-          Administra la verificación en dos pasos para tu propia cuenta.
-        </p>
+      <header class="glass-panel mb-8 flex flex-wrap items-center gap-4 rounded-2xl bg-white/60 p-5">
+        <img
+          src="/images/universidad-de-guadalajara-logo-png_seeklogo-617642.png"
+          alt="Universidad de Guadalajara"
+          class="h-14 w-14 shrink-0 object-contain"
+          width="56"
+          height="56"
+        >
+        <div class="h-11 w-px bg-slate-900/10" />
+        <div>
+          <p class="text-xs uppercase tracking-[0.22em] text-cyan-600">UDG Sentinel</p>
+          <h1 class="mt-1 text-fluid-2xl font-semibold text-slate-900">Mi cuenta</h1>
+          <p class="mt-1 max-w-2xl text-sm text-slate-700">
+            Datos de acceso y verificación en dos pasos para tu propia cuenta.
+          </p>
+        </div>
       </header>
 
       <p v-if="statusMessage" class="glass-panel mb-4 rounded-xl bg-white/50 px-4 py-2.5 text-sm text-slate-800">
@@ -23,12 +34,90 @@
 
       <div class="glass-panel rounded-2xl bg-white/70 p-6">
         <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-700" aria-hidden="true">
+              <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd" /></svg>
+            </span>
+            <div>
+              <h2 class="text-lg font-semibold text-slate-900">Datos de acceso</h2>
+              <p class="mt-1 text-sm text-slate-600">
+                Cambia tu nombre de usuario o tu contraseña. Necesitas confirmar tu contraseña actual.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <form class="mt-5 grid gap-4 sm:grid-cols-2" @submit.prevent="updateCredentials">
+          <div class="sm:col-span-2">
+            <label class="mb-1.5 block text-xs text-slate-600">Nombre de usuario / correo</label>
+            <input
+              v-model="credentialsForm.username"
+              type="text"
+              required
+              autocomplete="off"
+              class="glass-input h-10 w-full rounded-xl px-3 text-sm text-slate-900 focus:border-cyan-400 focus:outline-none"
+            >
+          </div>
           <div>
-            <h2 class="text-lg font-semibold text-slate-900">Verificación en dos pasos (2FA)</h2>
-            <p class="mt-1 text-sm text-slate-600">
-              Pide un código de tu app autenticadora (Google Authenticator, Authy, etc.) además de tu
-              contraseña al iniciar sesión.
+            <label class="mb-1.5 block text-xs text-slate-600">Nueva contraseña (opcional)</label>
+            <input
+              v-model="credentialsForm.password"
+              type="password"
+              autocomplete="new-password"
+              placeholder="Dejar en blanco para no cambiarla"
+              class="glass-input h-10 w-full rounded-xl px-3 text-sm text-slate-900 focus:border-cyan-400 focus:outline-none"
+            >
+          </div>
+          <div>
+            <label class="mb-1.5 block text-xs text-slate-600">Confirmar nueva contraseña</label>
+            <input
+              v-model="credentialsForm.passwordConfirmation"
+              type="password"
+              autocomplete="new-password"
+              class="glass-input h-10 w-full rounded-xl px-3 text-sm text-slate-900 focus:border-cyan-400 focus:outline-none"
+            >
+          </div>
+          <div class="sm:col-span-2">
+            <label class="mb-1.5 block text-xs text-slate-600">Confirma tu contraseña actual</label>
+            <input
+              v-model="credentialsForm.currentPassword"
+              type="password"
+              required
+              autocomplete="current-password"
+              class="glass-input h-10 w-full rounded-xl px-3 text-sm text-slate-900 focus:border-cyan-400 focus:outline-none"
+            >
+          </div>
+
+          <div class="sm:col-span-2 flex flex-wrap items-center justify-between gap-3">
+            <p v-if="credentialsUpdatedAtLabel" class="text-xs text-slate-500">
+              Última actualización: {{ credentialsUpdatedAtLabel }}
             </p>
+            <p v-else class="text-xs text-slate-500">Sin cambios registrados todavía.</p>
+            <button
+              type="submit"
+              class="glass-btn h-10 whitespace-nowrap rounded-xl border-cyan-300/40 bg-cyan-400 px-5 text-sm font-semibold text-slate-50 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="isSavingCredentials"
+            >
+              {{ isSavingCredentials ? 'Guardando...' : 'Guardar cambios' }}
+            </button>
+          </div>
+          <p v-if="credentialsError" class="sm:col-span-2 text-xs text-rose-600">{{ credentialsError }}</p>
+        </form>
+      </div>
+
+      <div class="glass-panel mt-6 rounded-2xl bg-white/70 p-6">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-700" aria-hidden="true">
+              <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+            </span>
+            <div>
+              <h2 class="text-lg font-semibold text-slate-900">Verificación en dos pasos (2FA)</h2>
+              <p class="mt-1 text-sm text-slate-600">
+                Pide un código de tu app autenticadora (Google Authenticator, Authy, etc.) además de tu
+                contraseña al iniciar sesión.
+              </p>
+            </div>
           </div>
           <span
             class="glass-badge rounded-full px-3 py-1 text-xs font-semibold"
@@ -155,13 +244,18 @@
 
       <div v-if="isAdmin" class="glass-panel mt-6 rounded-2xl bg-white/70 p-6">
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 class="text-lg font-semibold text-slate-900">Correo de incidentes críticos</h2>
-            <p class="mt-1 text-sm text-slate-600">
-              Como administrador, Sentinel te avisa por correo cuando un sitio prioritario cae o se
-              degrada de forma crítica. Puedes desactivar esto para tu cuenta sin afectar a los demás
-              administradores.
-            </p>
+          <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700" aria-hidden="true">
+              <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" /></svg>
+            </span>
+            <div>
+              <h2 class="text-lg font-semibold text-slate-900">Correo de incidentes críticos</h2>
+              <p class="mt-1 text-sm text-slate-600">
+                Como administrador, Sentinel te avisa por correo cuando un sitio prioritario cae o se
+                degrada de forma crítica. Puedes desactivar esto para tu cuenta sin afectar a los demás
+                administradores.
+              </p>
+            </div>
           </div>
           <button
             type="button"
@@ -193,6 +287,8 @@ const props = defineProps<{
   recoveryCodesRemaining: number | null
   isAdmin: boolean
   notifyOnCriticalIncidents: boolean
+  username: string
+  credentialsUpdatedAt: string | null
 }>()
 
 const isEnabled = ref(props.twoFactorEnabled)
@@ -202,6 +298,33 @@ const statusMessage = ref('')
 const formError = ref('')
 const notifyOnCriticalIncidents = ref(props.notifyOnCriticalIncidents)
 const isUpdatingNotificationPreference = ref(false)
+
+// Formato DD/MM/YYYY HH:MM, igual que en "Agregar sitio".
+const formatDateDDMMYYYY = (value: string | null): string | null => {
+  if (!value) {
+    return null
+  }
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null
+  }
+
+  const pad = (num: number) => String(num).padStart(2, '0')
+
+  return `${pad(parsed.getDate())}/${pad(parsed.getMonth() + 1)}/${parsed.getFullYear()} ${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`
+}
+
+const credentialsUpdatedAtLabel = ref(formatDateDDMMYYYY(props.credentialsUpdatedAt))
+const isSavingCredentials = ref(false)
+const credentialsError = ref('')
+const credentialsForm = ref({
+  username: props.username,
+  password: '',
+  passwordConfirmation: '',
+  currentPassword: '',
+})
 
 const setup = ref<{ secret: string; qr_code_svg: string } | null>(null)
 const confirmCode = ref('')
@@ -307,6 +430,42 @@ async function disable() {
     statusMessage.value = error instanceof Error ? error.message : 'No se pudo desactivar.'
   } finally {
     isBusy.value = false
+  }
+}
+
+async function updateCredentials() {
+  credentialsError.value = ''
+
+  if (credentialsForm.value.password !== '' && credentialsForm.value.password !== credentialsForm.value.passwordConfirmation) {
+    credentialsError.value = 'La confirmación de la nueva contraseña no coincide.'
+
+    return
+  }
+
+  isSavingCredentials.value = true
+
+  try {
+    const data = await postJson(
+      '/account/credentials',
+      {
+        username: credentialsForm.value.username,
+        password: credentialsForm.value.password || undefined,
+        password_confirmation: credentialsForm.value.password ? credentialsForm.value.passwordConfirmation : undefined,
+        current_password: credentialsForm.value.currentPassword,
+      },
+      'PATCH',
+    )
+
+    credentialsForm.value.password = ''
+    credentialsForm.value.passwordConfirmation = ''
+    credentialsForm.value.currentPassword = ''
+    credentialsForm.value.username = data.username ?? credentialsForm.value.username
+    credentialsUpdatedAtLabel.value = formatDateDDMMYYYY(data.updated_at ?? null)
+    statusMessage.value = data.message ?? 'Datos de acceso actualizados.'
+  } catch (error) {
+    credentialsError.value = error instanceof Error ? error.message : 'No se pudieron guardar los cambios.'
+  } finally {
+    isSavingCredentials.value = false
   }
 }
 
