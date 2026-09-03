@@ -11,20 +11,20 @@
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
 
-  /* Grises base (fondo oscuro tipo Datadog/Grafana) */
-  --color-gray-950: #0b0f1a;
-  --color-gray-900: #111827;
-  --color-gray-850: #161d2e;
-  --color-gray-800: #1e2535;
-  --color-gray-750: #252d40;
-  --color-gray-700: #2e3a50;
+  /* Grises base (tema claro "azul cielo") */
+  --color-gray-950: #f4f8fc;
+  --color-gray-900: #e8f0f7;
+  --color-gray-850: #cddce8;
+  --color-gray-800: #afc3d4;
+  --color-gray-750: #8ba3be;
+  --color-gray-700: #5a6e8a;
   --color-gray-600: #3d4f6a;
-  --color-gray-500: #5a6e8a;
-  --color-gray-400: #8ba3be;
-  --color-gray-300: #afc3d4;
-  --color-gray-200: #cddce8;
-  --color-gray-100: #e8f0f7;
-  --color-gray-50: #f4f8fc;
+  --color-gray-500: #2e3a50;
+  --color-gray-400: #252d40;
+  --color-gray-300: #1e2535;
+  --color-gray-200: #161d2e;
+  --color-gray-100: #111827;
+  --color-gray-50: #0b0f1a;
 
   /* Colores de estado */
   --color-up: #22c55e;       /* verde — sitio activo */
@@ -99,6 +99,72 @@
   /* Tarjeta base del dashboard */
   .card {
     @apply bg-gray-900 border border-gray-800 rounded-xl p-5;
+  }
+
+  /*
+   * Liquid Glass — lenguaje visual estilo Apple (superficies translucidas,
+   * desenfoque de fondo y brillo especular superior). Se usa en Dashboard.vue
+   * y SiteDetail.vue para que ambas pantallas compartan una misma identidad.
+   */
+  .glass-panel {
+    @apply border border-slate-900/10 backdrop-blur-xl;
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.7),
+      0 20px 60px -24px rgba(15, 23, 42, 0.16);
+  }
+
+  .glass-btn {
+    @apply border backdrop-blur-md transition-all duration-150;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.6);
+  }
+
+  .glass-btn:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .glass-badge {
+    @apply inline-flex items-center gap-1 whitespace-nowrap border border-slate-900/10 backdrop-blur-md;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.5);
+  }
+
+  .glass-input {
+    @apply border border-slate-900/15 backdrop-blur-md;
+    /* Fondo blanco solido (no translucido): en <select>/<option> nativos el
+       navegador puede ignorar backdrop-filter y fondos casi transparentes, dejando
+       el control iluminado de forma inconsistente. color-scheme:light asegura que
+       el menu desplegable del select se pinte con la paleta clara. */
+    background-color: #ffffff;
+    color-scheme: light;
+  }
+
+  .glass-input option {
+    background-color: #ffffff;
+    color: #0f172a;
+  }
+
+  /*
+   * Tipografia fluida: el tamano escala con el ancho de viewport entre los dos
+   * limites del clamp(), en vez de saltar entre breakpoints fijos — evita que
+   * titulos/KPIs se corten o desborden en pantallas angostas.
+   */
+  .text-fluid-sm {
+    font-size: clamp(0.8rem, 0.75rem + 0.25vw, 0.9rem);
+  }
+
+  .text-fluid-base {
+    font-size: clamp(0.9rem, 0.85rem + 0.3vw, 1.05rem);
+  }
+
+  .text-fluid-lg {
+    font-size: clamp(1.05rem, 0.95rem + 0.5vw, 1.375rem);
+  }
+
+  .text-fluid-xl {
+    font-size: clamp(1.25rem, 1.05rem + 0.9vw, 1.875rem);
+  }
+
+  .text-fluid-2xl {
+    font-size: clamp(1.5rem, 1.2rem + 1.4vw, 2.5rem);
   }
 
   .card-header {

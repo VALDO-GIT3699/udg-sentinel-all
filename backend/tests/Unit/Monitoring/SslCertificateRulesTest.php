@@ -13,7 +13,7 @@ final class SslCertificateRulesTest extends TestCase
     #[Test]
     public function it_returns_expired_when_certificate_is_expired(): void
     {
-        $certificate = new SslCertificate();
+        $certificate = new SslCertificate;
         $certificate->is_expired = true;
         $certificate->days_remaining = -1;
 
@@ -28,7 +28,7 @@ final class SslCertificateRulesTest extends TestCase
             'sentinel.ssl_alert_days_warning' => 30,
         ]);
 
-        $certificate = new SslCertificate();
+        $certificate = new SslCertificate;
         $certificate->is_expired = false;
         $certificate->days_remaining = 5;
 
@@ -43,7 +43,7 @@ final class SslCertificateRulesTest extends TestCase
             'sentinel.ssl_alert_days_warning' => 30,
         ]);
 
-        $certificate = new SslCertificate();
+        $certificate = new SslCertificate;
         $certificate->is_expired = false;
         $certificate->days_remaining = 20;
 

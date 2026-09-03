@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -15,8 +17,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('alert_id')->constrained('alerts')->cascadeOnDelete();
             $table->foreignId('channel_id')
-                  ->constrained('notification_channels')
-                  ->cascadeOnDelete();
+                ->constrained('notification_channels')
+                ->cascadeOnDelete();
             $table->string('status', 20)->default('pending')->comment('pending/sent/failed');
             $table->timestampTz('sent_at')->nullable();
             $table->text('error_message')->nullable();

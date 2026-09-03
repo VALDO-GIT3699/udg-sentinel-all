@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -14,8 +16,8 @@ return new class extends Migration
         Schema::create('access_logs', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('user_id')->nullable()
-                  ->constrained('users')
-                  ->nullOnDelete();
+                ->constrained('users')
+                ->nullOnDelete();
             $table->string('action', 50)->comment('login/logout/failed_login');
             $table->ipAddress('ip_address');
             $table->string('user_agent', 500)->nullable();

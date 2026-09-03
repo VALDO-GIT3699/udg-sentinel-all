@@ -11,12 +11,10 @@ use Modules\Analytics\Services\AnalyticsService;
 
 final class ExecutiveReportService
 {
-    public function __construct(private readonly AnalyticsService $analyticsService)
-    {
-    }
+    public function __construct(private readonly AnalyticsService $analyticsService) {}
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
      */
     public function build(array $filters = []): array
@@ -81,20 +79,20 @@ final class ExecutiveReportService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      */
     public function toCsv(array $filters = []): string
     {
         $report = $this->build($filters);
         $lines = [
             'tipo,valor',
-            'salud_institucional,' . ($report['summary']['kpis']['institutional_health_pct'] ?? 0),
-            'disponibilidad_24h,' . ($report['summary']['kpis']['availability_24h_pct'] ?? 0),
-            'cobertura_inventario,' . ($report['summary']['kpis']['inventory_coverage_pct'] ?? 0),
-            'alertas_abiertas,' . ($report['summary']['kpis']['open_alerts'] ?? 0),
-            'incidentes_abiertos,' . ($report['summary']['kpis']['open_incidents'] ?? 0),
+            'salud_institucional,'.($report['summary']['kpis']['institutional_health_pct'] ?? 0),
+            'disponibilidad_24h,'.($report['summary']['kpis']['availability_24h_pct'] ?? 0),
+            'cobertura_inventario,'.($report['summary']['kpis']['inventory_coverage_pct'] ?? 0),
+            'alertas_abiertas,'.($report['summary']['kpis']['open_alerts'] ?? 0),
+            'incidentes_abiertos,'.($report['summary']['kpis']['open_incidents'] ?? 0),
         ];
 
-        return implode("\n", $lines) . "\n";
+        return implode("\n", $lines)."\n";
     }
 }

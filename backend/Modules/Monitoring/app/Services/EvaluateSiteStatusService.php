@@ -10,11 +10,11 @@ use App\Contracts\Repositories\SiteRepositoryInterface;
 use App\Models\Site;
 use App\Models\SiteEvent;
 use DateTimeInterface;
+use Modules\Monitoring\Events\AlertResolved;
+use Modules\Monitoring\Events\AvailabilityChanged;
 use Modules\Monitoring\Events\SiteDownDetected;
 use Modules\Monitoring\Events\SiteRecovered;
 use Modules\Monitoring\Events\SiteStatusChanged;
-use Modules\Monitoring\Events\AvailabilityChanged;
-use Modules\Monitoring\Events\AlertResolved;
 
 final class EvaluateSiteStatusService
 {
@@ -22,8 +22,7 @@ final class EvaluateSiteStatusService
         private readonly SiteCheckRepositoryInterface $siteCheckRepository,
         private readonly SiteRepositoryInterface $siteRepository,
         private readonly AlertRepositoryInterface $alertRepository,
-    ) {
-    }
+    ) {}
 
     public function apply(Site $site, string $latestCheckStatus, ?string $errorMessage = null, ?DateTimeInterface $checkedAt = null): string
     {
@@ -93,7 +92,7 @@ final class EvaluateSiteStatusService
                 'statusAfterCode' => $nextStatus,
                 'detectedAt' => $occurredAt->format(DATE_ATOM),
                 'cause' => $errorMessage,
-            ]
+            ],
         );
 
         event(new AvailabilityChanged(

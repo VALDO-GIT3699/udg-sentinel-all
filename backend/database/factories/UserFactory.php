@@ -1,13 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Database\Factories;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\User>
+ * @extends Factory<User>
  */
 class UserFactory extends Factory
 {
@@ -29,6 +32,13 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
+            // Explicito en vez de confiar en el default de columna: aunque la
+            // BD sí aplica is_active=true por default, la instancia en memoria
+            // que create() devuelve no sincroniza ese default hasta un fresh()
+            // -y actingAs() en tests reutiliza esa misma instancia sin recargar-,
+            // asi que un checador de isActive() sobre el objeto recien creado
+            // veia null (falso) en vez de true.
+            'is_active' => true,
         ];
     }
 

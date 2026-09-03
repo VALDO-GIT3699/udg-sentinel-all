@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Modules\Monitoring\Console\Commands;
 
-use App\Models\CmsDetail;
 use App\Models\Server;
 use App\Models\Site;
 use App\Models\SiteGroup;
@@ -16,18 +15,20 @@ use Modules\Inventory\Services\Reconciliation\InventorySourceParser;
 final class SyncOfficialInventoryCommand extends Command
 {
     protected $signature = 'monitoring:sync-official-inventory
-        {--source=docs/right_sites/sitios_udg_marzo.md : Ruta relativa al markdown oficial}
+        {--source=docs/right_sites/true_sites.csv : Ruta relativa de la fuente oficial (CSV/MD)}
         {--replace : Elimina sitios que no esten en la fuente oficial}
+        {--merge-only : Modo aditivo: solo agrega sitios cuyo dominio no exista ya; nunca actualiza ni purga sitios existentes. Ignora --replace}
         {--dry-run : No persiste cambios}';
 
     protected $description = 'Sincroniza el inventario oficial desde el markdown institucional sin descubrimiento adicional.';
 
     public function handle(): int
     {
-        $sourcePath = base_path((string) $this->option('source'));
+        $sourceOption = (string) $this->option('source');
+        $sourcePath = $this->resolveSourcePath($sourceOption);
 
-        if (! is_file($sourcePath)) {
-            $this->warn(sprintf('No se encontro la fuente oficial en %s. No se aplicaron cambios.', $sourcePath));
+        if ($sourcePath === null) {
+            $this->warn(sprintf('No se encontro la fuente oficial en %s. No se aplicaron cambios.', $sourceOption));
 
             return self::SUCCESS;
         }
@@ -39,7 +40,7 @@ final class SyncOfficialInventoryCommand extends Command
         } catch (
             \Throwable $exception
         ) {
-            $this->error('No se pudo leer el markdown oficial: ' . $exception->getMessage());
+            $this->error('No se pudo leer el markdown oficial: '.$exception->getMessage());
 
             return self::FAILURE;
         }
@@ -52,16 +53,33 @@ final class SyncOfficialInventoryCommand extends Command
 
         $dryRun = (bool) $this->option('dry-run');
         $replace = (bool) $this->option('replace');
-        $domains = [];
+        $mergeOnly = (bool) $this->option('merge-only');
+
+        if ($mergeOnly && $replace) {
+            $this->warn('--replace se ignora porque --merge-only esta activo (modo puramente aditivo).');
+            $replace = false;
+        }
+
+        // En modo aditivo, la identidad es dominio-canonico + ruta de la URL: distintas
+        // paginas del mismo dominio (p. ej. una carrera por ruta bajo el mismo campus)
+        // son sitios distintos que el motor de inspeccion revisa por separado, ya que
+        // escanea la URL completa, no solo el dominio. Solo se omite una fila cuando
+        // esa combinacion exacta (dominio + ruta) ya esta registrada.
+        $existingIdentities = $mergeOnly
+            ? Site::query()->get(['domain', 'url'])
+                ->map(fn (Site $site): string => $this->siteIdentity((string) $site->domain, (string) $site->url))
+                ->filter(fn (string $identity): bool => $identity !== '')
+                ->flip()
+                ->all()
+            : [];
 
         if ($dryRun) {
             DB::beginTransaction();
-        } elseif ($replace) {
-            DB::statement('TRUNCATE TABLE sites RESTART IDENTITY CASCADE');
         }
 
         try {
             $groups = [];
+
             foreach ($rows as $row) {
                 $entity = $this->normalizeText((string) ($row['entidad'] ?? 'Sin entidad'));
                 $groups[$entity] = $this->upsertGroup($entity, $dryRun);
@@ -69,65 +87,90 @@ final class SyncOfficialInventoryCommand extends Command
 
             $created = 0;
             $updated = 0;
+            $skipped = 0;
+            $touchedSiteIds = [];
+            $rowKeyOccurrences = [];
 
             foreach ($rows as $row) {
+                $rowKeySeed = $this->buildOfficialRowKeySeed($row);
+                $occurrence = $rowKeyOccurrences[$rowKeySeed] ?? 0;
+                $rowKeyOccurrences[$rowKeySeed] = $occurrence + 1;
+                $rowKey = $this->buildOfficialRowKey($rowKeySeed, $occurrence);
                 $sourceUrl = trim((string) ($row['dominio'] ?? ''));
                 $domain = $this->normalizeDomain($sourceUrl);
                 $url = $this->normalizeUrl($sourceUrl, $domain);
 
                 if ($domain === '') {
-                    continue;
+                    $domain = $this->buildPlaceholderDomain($rowKey);
                 }
 
-                $domains[] = $domain;
+                if ($url === '') {
+                    $url = $this->buildUrl($domain);
+                }
+
+                if ($mergeOnly) {
+                    $identity = $this->siteIdentity($domain, $url);
+
+                    if (isset($existingIdentities[$identity])) {
+                        $skipped++;
+                        continue;
+                    }
+                }
 
                 $entity = $this->normalizeText((string) ($row['entidad'] ?? 'Sin entidad'));
                 $groupId = $groups[$entity];
                 $name = trim((string) ($row['nombre_del_sitio'] ?? $row['nombre'] ?? $domain));
-                $site = Site::query()->where('domain', $domain)->first();
+                $site = $mergeOnly ? null : Site::query()->whereJsonContains('tags', $rowKey)->first();
                 $isActive = $this->toBoolean($row['sitio_activo'] ?? null);
+                $isMonitored = $isActive && ! $this->isSyntheticDomain($domain);
                 $projectStatus = trim((string) ($row['estatus_proyecto'] ?? ''));
                 $comments = trim((string) ($row['comentarios'] ?? ''));
-                $cmsType = $this->mapCmsType((string) ($row['cms'] ?? ''));
-                $serverIp = trim((string) ($row['ip_servidor'] ?? ''));
+                $serverIp = $this->sanitizeServerIp((string) ($row['ip_servidor'] ?? ''));
 
                 if ($this->isMissingServerMarker($serverIp)) {
                     $serverIp = $this->extractIpFromDomain($domain) ?? '';
                 }
 
                 if ($site === null) {
-                    $site = new Site();
+                    $site = new Site;
                     $site->forceFill([
                         'site_group_id' => $groupId,
                         'name' => $name,
-                        'slug' => Str::slug($entity . '-' . $domain),
+                        'slug' => $this->buildUniqueSlug($entity, $name, $domain, $rowKey),
                         'domain' => $domain,
                         'url' => $url,
                         'is_active' => $isActive,
-                        'is_monitored' => $isActive,
+                        'is_monitored' => $isMonitored,
                         'priority' => $this->priorityFromProjectStatus($projectStatus),
                         'current_status' => 'unknown',
                         'current_score' => 100,
                         'current_score_level' => 'unknown',
                         'check_interval_min' => $isActive ? 5 : 15,
                         'notes' => $this->composeNotes($projectStatus, $comments),
-                        'tags' => ['official', 'institutional'],
+                        'tags' => ['official', 'institutional', $rowKey],
                     ]);
 
                     if (! $dryRun) {
                         $site->save();
                         $created++;
                     }
+
+                    if ($mergeOnly) {
+                        // Evita crear dos sitios si la misma fuente trae exactamente la
+                        // misma combinacion dominio+ruta repetida en mas de una fila.
+                        $existingIdentities[$this->siteIdentity($domain, $url)] = true;
+                    }
                 } else {
                     $site->forceFill([
                         'site_group_id' => $groupId,
                         'name' => $name,
+                        'domain' => $domain,
                         'url' => $url,
                         'is_active' => $isActive,
-                        'is_monitored' => $isActive,
+                        'is_monitored' => $isMonitored,
                         'priority' => $this->priorityFromProjectStatus($projectStatus),
                         'notes' => $this->composeNotes($projectStatus, $comments),
-                        'tags' => ['official', 'institutional'],
+                        'tags' => ['official', 'institutional', $rowKey],
                     ]);
 
                     if (! $dryRun) {
@@ -138,8 +181,18 @@ final class SyncOfficialInventoryCommand extends Command
 
                 if (! $dryRun) {
                     $this->syncServer($site, $serverIp);
-                    $this->syncCmsDetail($site, $cmsType, (string) ($row['cms'] ?? ''), $comments);
+                    $touchedSiteIds[] = (int) $site->id;
                 }
+            }
+
+            // "--replace" retira (soft-delete) los sitios oficiales que ya no aparecen en la
+            // fuente, sin tocar los que siguen presentes ni su historial de monitoreo. Nunca
+            // se trunca la tabla completa: eso borraría también sitios dados de alta a mano.
+            if ($replace && ! $dryRun && $touchedSiteIds !== []) {
+                Site::query()
+                    ->whereJsonContains('tags', 'official')
+                    ->whereNotIn('id', $touchedSiteIds)
+                    ->delete();
             }
 
             if ($replace && ! $dryRun) {
@@ -152,7 +205,13 @@ final class SyncOfficialInventoryCommand extends Command
                 DB::rollBack();
             }
 
-            $this->info(sprintf('Inventario oficial sincronizado. Filas procesadas: %d, creados: %d, actualizados: %d.', count($rows), $created, $updated));
+            $this->info(sprintf(
+                'Inventario oficial sincronizado. Filas procesadas: %d, creados: %d, actualizados: %d, ya existentes (omitidos): %d.',
+                count($rows),
+                $created,
+                $updated,
+                $skipped,
+            ));
 
             return self::SUCCESS;
         } catch (\Throwable $exception) {
@@ -189,9 +248,13 @@ final class SyncOfficialInventoryCommand extends Command
 
     private function syncServer(Site $site, string $serverIp): void
     {
-        $serverIp = trim($serverIp);
+        $serverIp = $this->sanitizeServerIp($serverIp);
 
         if ($serverIp === '' || $this->isMissingServerMarker($serverIp)) {
+            return;
+        }
+
+        if (! $this->isValidIpv4($serverIp)) {
             return;
         }
 
@@ -207,7 +270,7 @@ final class SyncOfficialInventoryCommand extends Command
                 'ssh_user' => 'unknown',
                 'is_accessible' => false,
                 'notes' => 'Servidor importado desde el inventario oficial.',
-            ]
+            ],
         );
 
         $site->servers()->syncWithoutDetaching([
@@ -215,41 +278,11 @@ final class SyncOfficialInventoryCommand extends Command
         ]);
     }
 
-    private function syncCmsDetail(Site $site, string $cmsType, string $cmsLabel, string $comments): void
-    {
-        if ($cmsType === '') {
-            return;
-        }
-
-        $normalizedLabel = trim($cmsLabel);
-
-        $payload = [
-            'cms_type' => $cmsType,
-            'cms_version' => $normalizedLabel !== '' ? $normalizedLabel : null,
-            'db_type' => null,
-            'db_version' => null,
-            'php_version' => null,
-            'php_is_vulnerable' => false,
-            'server_software' => null,
-            'theme_name' => $normalizedLabel !== '' ? $normalizedLabel : null,
-            'theme_version' => null,
-            'modules_count' => 0,
-            'has_updates' => false,
-            'has_security_updates' => false,
-            'last_scanned_at' => now(),
-        ];
-
-        CmsDetail::query()->updateOrCreate(
-            ['site_id' => (int) $site->id],
-            $payload,
-        );
-    }
-
     private function normalizeDomain(string $value): string
     {
         $value = trim($value);
 
-        if ($value === '') {
+        if ($value === '' || mb_strtolower($value) === 'nd') {
             return '';
         }
 
@@ -257,6 +290,34 @@ final class SyncOfficialInventoryCommand extends Command
         $value = explode('/', $value, 2)[0];
 
         return mb_strtolower($value);
+    }
+
+    /**
+     * Mismo criterio de EloquentSiteRepository::dashboardCanonicalDomainSql para
+     * reconocer "www.foo.udg.mx" y "foo.udg.mx" como el mismo sitio en --merge-only.
+     */
+    private function canonicalDomain(string $domain): string
+    {
+        return (string) preg_replace('/^(?:(?:www\d*|portal\d*|web\d*|home)\.)+/i', '', mb_strtolower(trim($domain)));
+    }
+
+    /**
+     * Identidad para --merge-only: dominio canonico + ruta de la URL. Dos filas del
+     * mismo dominio pero con rutas distintas (p. ej. una pagina por carrera bajo el
+     * mismo campus) son sitios distintos, porque el motor de inspeccion escanea la
+     * URL completa y puede detectar fallas por pagina que no aplican al resto.
+     */
+    private function siteIdentity(string $domain, string $url): string
+    {
+        $canonicalDomain = $this->canonicalDomain($domain);
+
+        if ($canonicalDomain === '') {
+            return '';
+        }
+
+        $path = rtrim((string) (parse_url($url, PHP_URL_PATH) ?? ''), '/');
+
+        return $canonicalDomain.'|'.mb_strtolower($path);
     }
 
     private function extractIpFromDomain(string $domain): ?string
@@ -275,6 +336,26 @@ final class SyncOfficialInventoryCommand extends Command
         $normalized = mb_strtolower(trim($value));
 
         return $normalized === '' || in_array($normalized, ['externo', 'no tiene', 'no', 'sin dato', 'na', 'n/a'], true);
+    }
+
+    private function sanitizeServerIp(string $value): string
+    {
+        $normalized = trim($value);
+
+        if ($normalized === '') {
+            return '';
+        }
+
+        // Algunas filas del CSV llegan con IP separada por comas en lugar de puntos.
+        $normalized = str_replace(',', '.', $normalized);
+        $normalized = preg_replace('/\s+/', '', $normalized) ?? $normalized;
+
+        return trim($normalized);
+    }
+
+    private function isValidIpv4(string $value): bool
+    {
+        return filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false;
     }
 
     private function normalizeText(string $value): string
@@ -301,22 +382,101 @@ final class SyncOfficialInventoryCommand extends Command
             return '';
         }
 
-        return preg_match('#^https?://#i', $domain) === 1 ? $domain : 'https://' . $domain;
+        return preg_match('#^https?://#i', $domain) === 1 ? $domain : 'https://'.$domain;
     }
 
     private function normalizeUrl(string $sourceUrl, string $domain): string
     {
         $sourceUrl = trim($sourceUrl);
 
+        if ($sourceUrl !== '' && mb_strtolower($sourceUrl) === 'nd') {
+            return '';
+        }
+
         if ($sourceUrl !== '') {
             if (preg_match('#^https?://#i', $sourceUrl) === 1) {
                 return $sourceUrl;
             }
 
-            return 'https://' . ltrim($sourceUrl, '/');
+            return 'https://'.ltrim($sourceUrl, '/');
         }
 
         return $this->buildUrl($domain);
+    }
+
+    /**
+     * Contenido estable de la fila (entidad+nombre+dominio), independiente de su
+     * posicion en el archivo. Reordenar o insertar filas en la fuente oficial no
+     * debe hacer que una fila existente parezca "nueva" en la proxima sincronizacion.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function buildOfficialRowKeySeed(array $row): string
+    {
+        $entity = mb_strtolower($this->normalizeText((string) ($row['entidad'] ?? '')));
+        $name = mb_strtolower($this->normalizeText((string) ($row['nombre_del_sitio'] ?? $row['nombre'] ?? '')));
+        $domain = mb_strtolower($this->normalizeText((string) ($row['dominio'] ?? '')));
+
+        return implode('|', [$entity, $name, $domain]);
+    }
+
+    /**
+     * $occurrence distingue filas con contenido identico dentro de la misma corrida
+     * (p. ej. dos altas legitimas para el mismo dominio) sin depender del indice
+     * absoluto de la fila, que cambia cada vez que se edita la fuente oficial.
+     */
+    private function buildOfficialRowKey(string $rowKeySeed, int $occurrence): string
+    {
+        $hash = sha1($rowKeySeed);
+
+        return $occurrence > 0
+            ? 'official-row:'.$hash.'-'.$occurrence
+            : 'official-row:'.$hash;
+    }
+
+    private function buildPlaceholderDomain(string $rowKey): string
+    {
+        return 'sin-dominio-'.substr(sha1($rowKey), 0, 16).'.invalid';
+    }
+
+    private function isSyntheticDomain(string $domain): bool
+    {
+        return str_ends_with($domain, '.invalid');
+    }
+
+    private function buildUniqueSlug(string $entity, string $name, string $domain, string $rowKey): string
+    {
+        $seed = trim($entity.' '.$name.' '.$domain);
+        $base = Str::slug($seed !== '' ? $seed : 'sitio-oficial');
+
+        if ($base === '') {
+            $base = 'sitio-oficial';
+        }
+
+        $suffix = substr(sha1($rowKey), 0, 8);
+        $maxBaseLength = 100 - 1 - strlen($suffix);
+        $base = mb_substr($base, 0, $maxBaseLength);
+        $base = rtrim($base, '-');
+
+        if ($base === '') {
+            $base = 'sitio-oficial';
+            $base = mb_substr($base, 0, $maxBaseLength);
+            $base = rtrim($base, '-');
+        }
+
+        $slug = $base.'-'.$suffix;
+
+        if (! Site::query()->where('slug', $slug)->exists()) {
+            return $slug;
+        }
+
+        $i = 2;
+
+        while (Site::query()->where('slug', $slug.'-'.$i)->exists()) {
+            $i++;
+        }
+
+        return $slug.'-'.$i;
     }
 
     private function priorityFromProjectStatus(string $status): int
@@ -351,22 +511,46 @@ final class SyncOfficialInventoryCommand extends Command
             return $projectStatus;
         }
 
-        return $projectStatus . ' · ' . $comments;
+        return $projectStatus.' · '.$comments;
     }
 
-    private function mapCmsType(string $value): string
+    private function hasSignificantPath(string $url): bool
     {
-        $normalized = mb_strtolower(trim($value));
+        $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
 
-        return match (true) {
-            str_contains($normalized, 'wordpress') => 'wordpress',
-            str_contains($normalized, 'd7') || str_contains($normalized, 'd9') || str_contains($normalized, 'd10') || str_contains($normalized, 'drupal') => 'drupal',
-            str_contains($normalized, 'php') => 'php',
-            str_contains($normalized, 'wix') => 'wix',
-            str_contains($normalized, 'joomla') => 'joomla',
-            str_contains($normalized, 'magneto') || str_contains($normalized, 'magento') => 'magento',
-            $normalized !== '' => 'other',
-            default => 'unknown',
-        };
+        return $path !== '' && $path !== '/';
+    }
+
+    private function resolveSourcePath(string $source): ?string
+    {
+        $source = trim($source);
+
+        if ($source === '') {
+            return null;
+        }
+
+        $candidates = [];
+
+        if ($this->isAbsolutePath($source)) {
+            $candidates[] = $source;
+        } else {
+            $candidates[] = base_path($source);
+            $candidates[] = base_path('../'.ltrim($source, '/\\'));
+        }
+
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate)) {
+                $realPath = realpath($candidate);
+
+                return $realPath !== false ? $realPath : $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        return preg_match('/^[A-Za-z]:\\\\/', $path) === 1 || str_starts_with($path, '/');
     }
 }

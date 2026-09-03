@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -35,10 +36,10 @@ final class SiteGroup extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<SiteGroup> $query
-     * @return \Illuminate\Database\Eloquent\Builder<SiteGroup>
+     * @param  Builder<SiteGroup>  $query
+     * @return Builder<SiteGroup>
      */
-    public function scopeOrdered(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeOrdered(Builder $query): Builder
     {
         return $query->orderBy('name');
     }

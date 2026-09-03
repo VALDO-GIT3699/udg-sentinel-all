@@ -10,9 +10,7 @@ use Modules\Monitoring\Services\MonitoringHttpClientFactory;
 
 final class AssetFingerprintBuilder
 {
-    public function __construct(private readonly MonitoringHttpClientFactory $httpClientFactory)
-    {
-    }
+    public function __construct(private readonly MonitoringHttpClientFactory $httpClientFactory) {}
 
     public function build(Site $site): AssetFingerprint
     {

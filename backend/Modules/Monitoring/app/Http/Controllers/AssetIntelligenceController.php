@@ -13,9 +13,7 @@ use Inertia\Response;
 
 final class AssetIntelligenceController extends Controller
 {
-    public function __construct(private readonly AssetIntelligenceSchema $assetSchema)
-    {
-    }
+    public function __construct(private readonly AssetIntelligenceSchema $assetSchema) {}
 
     public function index(): Response
     {

@@ -7,9 +7,9 @@ use Illuminate\Support\Facades\DB;
 use Modules\Monitoring\Jobs\DispatchMassScanRunJob;
 use Modules\Monitoring\Support\MassScanProgress;
 
-require __DIR__ . '/../../vendor/autoload.php';
+require __DIR__.'/../../vendor/autoload.php';
 
-$app = require __DIR__ . '/../../bootstrap/app.php';
+$app = require __DIR__.'/../../bootstrap/app.php';
 /** @var Kernel $kernel */
 $kernel = $app->make(Kernel::class);
 $kernel->bootstrap();
@@ -33,7 +33,7 @@ $siteIds = DB::table('sites')
 $progress = MassScanProgress::start(
     totalSites: count($siteIds),
     initiatedByUserId: null,
-    triggerMode: 'manual',
+    triggerMode: 'manual_selected',
 );
 
 $runId = (string) ($progress['run_id'] ?? '');

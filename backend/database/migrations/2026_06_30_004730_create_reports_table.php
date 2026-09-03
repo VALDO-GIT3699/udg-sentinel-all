@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -18,8 +20,8 @@ return new class extends Migration
             $table->string('scope', 20)->comment('global/group/site/server');
             $table->unsignedBigInteger('scope_id')->nullable();
             $table->foreignId('generated_by')->nullable()
-                  ->constrained('users')
-                  ->nullOnDelete();
+                ->constrained('users')
+                ->nullOnDelete();
             $table->date('period_start');
             $table->date('period_end');
             $table->string('file_path', 500)->nullable();

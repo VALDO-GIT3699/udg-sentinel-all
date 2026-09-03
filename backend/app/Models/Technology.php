@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -42,11 +43,10 @@ final class Technology extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<Technology> $query
-     * @param string $category
-     * @return \Illuminate\Database\Eloquent\Builder<Technology>
+     * @param  Builder<Technology>  $query
+     * @return Builder<Technology>
      */
-    public function scopeByCategory(\Illuminate\Database\Eloquent\Builder $query, string $category): \Illuminate\Database\Eloquent\Builder
+    public function scopeByCategory(Builder $query, string $category): Builder
     {
         return $query->where('category', $category);
     }

@@ -43,7 +43,7 @@ final class AssetIntelligenceSchema
     }
 
     /**
-     * @param array<int, string> $columns
+     * @param  array<int, string>  $columns
      */
     public function hasSitesColumns(array $columns): bool
     {
@@ -58,7 +58,7 @@ final class AssetIntelligenceSchema
 
     public function hasSiteColumn(string $column): bool
     {
-        $key = 'sites.' . $column;
+        $key = 'sites.'.$column;
 
         if (isset($this->memo[$key])) {
             return $this->memo[$key];

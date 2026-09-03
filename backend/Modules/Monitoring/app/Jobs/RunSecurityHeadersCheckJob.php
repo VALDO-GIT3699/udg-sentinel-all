@@ -30,8 +30,6 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
-    public int $tries = 2;
-
     private const TARGET_HEADERS = [
         'strict-transport-security',
         'content-security-policy',
@@ -41,12 +39,13 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
         'permissions-policy',
     ];
 
+    public int $tries = 2;
+
     public function __construct(
         private readonly int $siteId,
         private readonly ?string $massScanRunId = null,
         private readonly bool $forceScan = false,
-    )
-    {
+    ) {
         $this->onQueue((string) env('SENTINEL_QUEUE_HEADERS', 'monitoring-headers'));
     }
 
@@ -55,8 +54,7 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
         MonitoringHttpClientFactory $httpClientFactory,
         AlertRepositoryInterface $alertRepository,
         AlertNotificationService $alertNotificationService,
-    ): void
-    {
+    ): void {
         try {
             $site = $siteRepository->findById($this->siteId);
 
@@ -69,115 +67,115 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
                     ->make(['Accept' => 'text/html,*/*;q=0.8'])
                     ->get($site->url);
 
-            $headers = array_change_key_case($response->headers(), CASE_LOWER);
-            $headerEvaluation = $this->evaluateHeaders($headers);
-            $score = (int) round((count(array_filter($headerEvaluation)) / count(self::TARGET_HEADERS)) * 100);
-            $level = SecurityScore::levelFromScore($score);
+                $headers = array_change_key_case($response->headers(), CASE_LOWER);
+                $headerEvaluation = $this->evaluateHeaders($headers);
+                $score = (int) round((count(array_filter($headerEvaluation)) / count(self::TARGET_HEADERS)) * 100);
+                $level = SecurityScore::levelFromScore($score);
 
-            DB::transaction(function () use ($site, $siteRepository, $headers, $headerEvaluation, $score, $level): void {
-                SecurityHeader::create([
-                    'site_id' => $site->id,
-                    'checked_at' => now(),
-                    'has_hsts' => $headerEvaluation['strict-transport-security'],
-                    'has_csp' => $headerEvaluation['content-security-policy'],
-                    'has_x_frame_options' => $headerEvaluation['x-frame-options'],
-                    'has_x_content_type' => $headerEvaluation['x-content-type-options'],
-                    'has_referrer_policy' => $headerEvaluation['referrer-policy'],
-                    'has_permissions_policy' => $headerEvaluation['permissions-policy'],
-                    'score_contribution' => $score,
-                    'raw_headers' => $headers,
-                ]);
+                DB::transaction(function () use ($site, $siteRepository, $headers, $headerEvaluation, $score, $level): void {
+                    SecurityHeader::create([
+                        'site_id' => $site->id,
+                        'checked_at' => now(),
+                        'has_hsts' => $headerEvaluation['strict-transport-security'],
+                        'has_csp' => $headerEvaluation['content-security-policy'],
+                        'has_x_frame_options' => $headerEvaluation['x-frame-options'],
+                        'has_x_content_type' => $headerEvaluation['x-content-type-options'],
+                        'has_referrer_policy' => $headerEvaluation['referrer-policy'],
+                        'has_permissions_policy' => $headerEvaluation['permissions-policy'],
+                        'score_contribution' => $score,
+                        'raw_headers' => $headers,
+                    ]);
 
-                SecurityScore::create([
-                    'site_id' => $site->id,
-                    'score' => $score,
-                    'level' => $level,
-                    'calculated_at' => now(),
-                    'breakdown' => $headerEvaluation,
-                    'recommendations' => $this->buildRecommendations($headerEvaluation),
-                ]);
+                    SecurityScore::create([
+                        'site_id' => $site->id,
+                        'score' => $score,
+                        'level' => $level,
+                        'calculated_at' => now(),
+                        'breakdown' => $headerEvaluation,
+                        'recommendations' => $this->buildRecommendations($headerEvaluation),
+                    ]);
 
-                $siteRepository->update($site, [
-                    'current_score' => $score,
-                    'current_score_level' => $level,
-                ]);
-            });
+                    $siteRepository->update($site, [
+                        'current_score' => $score,
+                        'current_score_level' => $level,
+                    ]);
+                });
 
-            // Spec §9: emitir security.headers.weak cuando score < 67 (menos de 4/6 cabeceras)
-            if ($score < 67) {
-                $missing = array_keys(array_filter($headerEvaluation, static fn (bool $value): bool => ! $value));
+                // Spec §9: emitir security.headers.weak cuando score < 67 (menos de 4/6 cabeceras)
+                if ($score < 67) {
+                    $missing = array_keys(array_filter($headerEvaluation, static fn (bool $value): bool => ! $value));
 
-                SecurityHeadersWeak::dispatch(
-                    siteId: (int) $site->id,
-                    score: $score,
-                    level: $level,
-                    missing: $missing,
-                    checkedAt: now()->toIso8601String(),
-                );
-
-                $event = 'security.headers.exposed';
-                $existing = $alertRepository->openForSite($site->id)
-                    ->first(fn ($alert) => data_get($alert->context, 'event') === $event);
-
-                if ($existing === null) {
-                    SiteEvent::record(
+                    SecurityHeadersWeak::dispatch(
                         siteId: (int) $site->id,
-                        eventType: $event,
-                        title: 'Semaforo de proteccion en nivel Expuesto',
-                        severity: 'high',
-                        description: 'Faltan cabeceras de seguridad criticas en la respuesta del sitio.',
-                        metadata: [
-                            'score' => $score,
-                            'level' => $level,
-                            'missing_headers' => $missing,
-                        ]
+                        score: $score,
+                        level: $level,
+                        missing: $missing,
+                        checkedAt: now()->toIso8601String(),
                     );
 
-                    $alert = $alertRepository->create([
-                        'site_id' => (int) $site->id,
-                        'title' => 'Sitio expuesto por cabeceras de seguridad',
-                        'message' => 'Nivel Expuesto detectado. Faltantes: ' . implode(', ', $missing),
-                        'severity' => $score < 34 ? 'critical' : 'high',
-                        'status' => 'open',
-                        'triggered_at' => now(),
-                        'context' => [
-                            'event' => $event,
-                            'score' => $score,
-                            'level' => $level,
-                            'missing_headers' => $missing,
-                        ],
-                    ]);
+                    $event = 'security.headers.exposed';
+                    $existing = $alertRepository->openForSite($site->id)
+                        ->first(fn ($alert) => data_get($alert->context, 'event') === $event);
 
-                    event(new AlertTriggered(
-                        alertId: (int) $alert->id,
-                        siteId: $alert->site_id !== null ? (int) $alert->site_id : null,
-                        severity: (string) $alert->severity,
-                        event: $event,
-                        triggeredAt: now()->toIso8601String(),
-                    ));
+                    if ($existing === null) {
+                        SiteEvent::record(
+                            siteId: (int) $site->id,
+                            eventType: $event,
+                            title: 'Semaforo de proteccion en nivel Expuesto',
+                            severity: 'high',
+                            description: 'Faltan cabeceras de seguridad criticas en la respuesta del sitio.',
+                            metadata: [
+                                'score' => $score,
+                                'level' => $level,
+                                'missing_headers' => $missing,
+                            ],
+                        );
 
-                    $alertNotificationService->dispatch($alert, [
-                        'trigger' => 'security_exposed',
-                    ]);
-                }
-            } else {
-                $alertRepository->openForSite($site->id)
-                    ->filter(fn ($alert) => data_get($alert->context, 'event') === 'security.headers.exposed')
-                    ->each(function ($alert): void {
-                        $alert->update([
-                            'status' => 'resolved',
-                            'resolved_at' => now(),
-                            'resolved_by' => null,
+                        $alert = $alertRepository->create([
+                            'site_id' => (int) $site->id,
+                            'title' => 'Sitio expuesto por cabeceras de seguridad',
+                            'message' => 'Nivel Expuesto detectado. Faltantes: '.implode(', ', $missing),
+                            'severity' => $score < 34 ? 'critical' : 'high',
+                            'status' => 'open',
+                            'triggered_at' => now(),
+                            'context' => [
+                                'event' => $event,
+                                'score' => $score,
+                                'level' => $level,
+                                'missing_headers' => $missing,
+                            ],
                         ]);
 
-                        event(new AlertResolved(
+                        event(new AlertTriggered(
                             alertId: (int) $alert->id,
                             siteId: $alert->site_id !== null ? (int) $alert->site_id : null,
-                            event: (string) data_get($alert->context, 'event', 'alert.resolved'),
-                            resolvedAt: now()->toIso8601String(),
+                            severity: (string) $alert->severity,
+                            event: $event,
+                            triggeredAt: now()->toIso8601String(),
                         ));
-                    });
-            }
+
+                        $alertNotificationService->dispatch($alert, [
+                            'trigger' => 'security_exposed',
+                        ]);
+                    }
+                } else {
+                    $alertRepository->openForSite($site->id)
+                        ->filter(fn ($alert) => data_get($alert->context, 'event') === 'security.headers.exposed')
+                        ->each(function ($alert): void {
+                            $alert->update([
+                                'status' => 'resolved',
+                                'resolved_at' => now(),
+                                'resolved_by' => null,
+                            ]);
+
+                            event(new AlertResolved(
+                                alertId: (int) $alert->id,
+                                siteId: $alert->site_id !== null ? (int) $alert->site_id : null,
+                                event: (string) data_get($alert->context, 'event', 'alert.resolved'),
+                                resolvedAt: now()->toIso8601String(),
+                            ));
+                        });
+                }
             } catch (\Throwable $exception) {
                 // El scanner de cabeceras no debe detener el pipeline completo.
 
@@ -198,7 +196,7 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
     }
 
     /**
-     * @param array<string, bool> $headerEvaluation
+     * @param  array<string, bool>  $headerEvaluation
      * @return array<int, string>
      */
     private function buildRecommendations(array $headerEvaluation): array
@@ -233,7 +231,7 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
     }
 
     /**
-     * @param array<string, array<int, string>> $headers
+     * @param  array<string, array<int, string>>  $headers
      * @return array<string, bool>
      */
     private function evaluateHeaders(array $headers): array
@@ -249,7 +247,7 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
     }
 
     /**
-     * @param array<int, string> $values
+     * @param  array<int, string>  $values
      */
     private function isHeaderPresentAndNonEmpty(array $values): bool
     {
@@ -257,7 +255,7 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
     }
 
     /**
-     * @param array<int, string> $values
+     * @param  array<int, string>  $values
      */
     private function headerContainsValue(array $values, string $needle): bool
     {
@@ -265,7 +263,7 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
     }
 
     /**
-     * @param array<int, string> $values
+     * @param  array<int, string>  $values
      */
     private function isStrictTransportSecurityStrong(array $values): bool
     {
@@ -275,7 +273,7 @@ final class RunSecurityHeadersCheckJob implements ShouldQueue
     }
 
     /**
-     * @param array<int, string> $values
+     * @param  array<int, string>  $values
      */
     private function isContentSecurityPolicyStrong(array $values): bool
     {

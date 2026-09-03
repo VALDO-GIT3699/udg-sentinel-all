@@ -30,7 +30,7 @@ final class Setting extends Model
         $setting = Cache::remember(
             "setting:{$key}",
             now()->addHour(),
-            fn () => self::where('key', $key)->first()
+            fn () => self::where('key', $key)->first(),
         );
 
         if ($setting === null) {
@@ -43,10 +43,10 @@ final class Setting extends Model
     public static function set(string $key, mixed $value): void
     {
         $type = match (true) {
-            is_bool($value)    => 'boolean',
-            is_int($value)     => 'integer',
-            is_array($value)   => 'json',
-            default            => 'string',
+            is_bool($value) => 'boolean',
+            is_int($value) => 'integer',
+            is_array($value) => 'json',
+            default => 'string',
         };
 
         $stored = is_array($value)
@@ -55,7 +55,7 @@ final class Setting extends Model
 
         self::updateOrCreate(
             ['key' => $key],
-            ['value' => $stored, 'type' => $type]
+            ['value' => $stored, 'type' => $type],
         );
 
         Cache::forget("setting:{$key}");
@@ -66,8 +66,8 @@ final class Setting extends Model
         return match ($type) {
             'integer' => (int) $value,
             'boolean' => filter_var($value, FILTER_VALIDATE_BOOLEAN),
-            'json'    => json_decode((string) $value, true, 512, JSON_THROW_ON_ERROR),
-            default   => $value,
+            'json' => json_decode((string) $value, true, 512, JSON_THROW_ON_ERROR),
+            default => $value,
         };
     }
 }

@@ -26,15 +26,15 @@ final class SecurityHeader extends Model
     ];
 
     protected $casts = [
-        'checked_at'              => 'immutable_datetime',
-        'has_hsts'                => 'boolean',
-        'has_csp'                 => 'boolean',
-        'has_x_frame_options'     => 'boolean',
-        'has_x_content_type'      => 'boolean',
-        'has_referrer_policy'     => 'boolean',
-        'has_permissions_policy'  => 'boolean',
-        'score_contribution'      => 'integer',
-        'raw_headers'             => 'array',
+        'checked_at' => 'immutable_datetime',
+        'has_hsts' => 'boolean',
+        'has_csp' => 'boolean',
+        'has_x_frame_options' => 'boolean',
+        'has_x_content_type' => 'boolean',
+        'has_referrer_policy' => 'boolean',
+        'has_permissions_policy' => 'boolean',
+        'score_contribution' => 'integer',
+        'raw_headers' => 'array',
     ];
 
     // -----------------------------------------------------------------

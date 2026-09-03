@@ -5,15 +5,9 @@ declare(strict_types=1);
 namespace Modules\Monitoring\Services\Strategies;
 
 use App\Models\Site;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Log;
-use Modules\Monitoring\Jobs\RunHeadCheckJob;
-use Modules\Monitoring\Jobs\RunSecurityHeadersCheckJob;
-use Modules\Monitoring\Jobs\RunSslCheckJob;
-use Modules\Monitoring\Jobs\RunTechnologyScanJob;
+use Illuminate\Http\Client\Response;
+use Modules\Monitoring\Jobs\RunSiteInspectionJob;
 use Modules\Monitoring\Services\MonitoringHttpClientFactory;
-use Modules\Monitoring\Support\DrupalFingerprint;
-use Modules\Monitoring\Support\DetectedTechnology;
 
 final class WebsiteMonitoringStrategy implements AssetMonitoringStrategyInterface
 {
@@ -29,10 +23,11 @@ final class WebsiteMonitoringStrategy implements AssetMonitoringStrategyInterfac
 
     public function dispatch(Site $site): void
     {
-        RunHeadCheckJob::dispatch((int) $site->id);
-        RunSecurityHeadersCheckJob::dispatch((int) $site->id);
-        RunSslCheckJob::dispatch((int) $site->id);
-        RunTechnologyScanJob::dispatch((int) $site->id);
+        // El pipeline unificado (DNS/HTTP/SSL/cabeceras/fingerprint en una sola pasada)
+        // es el mismo que usa el escaneo masivo manual via DispatchSiteScanChainJob; el
+        // dashboard y el detalle de sitio ya solo leen de SiteInspectionProfile, que solo
+        // este job puebla.
+        RunSiteInspectionJob::dispatch((int) $site->id);
     }
 
     /**
@@ -40,152 +35,12 @@ final class WebsiteMonitoringStrategy implements AssetMonitoringStrategyInterfac
      */
     public function inspectTechnologies(Site $site, MonitoringHttpClientFactory $httpClientFactory): array
     {
-        try {
-            $response = $httpClientFactory
-                ->make(['Accept' => 'text/html,*/*;q=0.8'])
-                ->get($site->url);
-        } catch (ConnectionException $exception) {
-            Log::warning('Monitoring: inspeccion tecnologica interrumpida por conexion.', [
-                'site_id' => $site->id,
-                'error' => $exception->getMessage(),
-            ]);
-
-            return [];
-        }
-
-        $headers = array_change_key_case($response->headers(), CASE_LOWER);
-        $bodyRaw = (string) $response->body();
-        $body = mb_strtolower($bodyRaw);
-        $results = [];
-
-        $hasWordPress = $this->hasWordPressBaseSignature($headers, $body);
-        $hasWix = $this->hasWixBaseSignature($headers, $body);
-
-        // Exclusión mutua estricta de CMS.
-        if ($hasWordPress) {
-            $wordpressVersion = null;
-
-            if (preg_match('/<meta[^>]+name=["\']generator["\'][^>]+content=["\']\s*wordpress\s*([0-9]+(?:\.[0-9]+){0,2})/i', $bodyRaw, $matches) === 1) {
-                $wordpressVersion = $matches[1];
-            }
-
-            $results[] = DetectedTechnology::fromArray([
-                'name' => 'WordPress',
-                'version' => $wordpressVersion,
-                'category' => 'cms',
-                'confidence' => 95,
-                'slug' => 'wordpress',
-                'evidence' => ['wp-content', 'wp-includes'],
-            ])->toFrontendArray();
-
-            return array_values(array_unique($results, SORT_REGULAR));
-        }
-
-        if ($hasWix) {
-            $results[] = DetectedTechnology::fromArray([
-                'name' => 'Wix',
-                'version' => null,
-                'category' => 'cms',
-                'confidence' => 96,
-                'slug' => 'wix',
-                'evidence' => ['wixsite', 'wix-code'],
-            ])->toFrontendArray();
-
-            return array_values(array_unique($results, SORT_REGULAR));
-        }
-
-        if ($this->hasDrupalBaseSignature($headers, $bodyRaw)) {
-            $drupal = DrupalFingerprint::detect($headers, $bodyRaw, []);
-
-        if (is_array($drupal)) {
-            $results[] = DetectedTechnology::fromArray([
-                'name' => 'Drupal',
-                'version' => $drupal['version'] ?? null,
-                'category' => 'cms',
-                'confidence' => $drupal['confidence'] ?? 90,
-                'slug' => 'drupal',
-                'evidence' => $drupal['evidence'] ?? [],
-            ])->toFrontendArray();
-
-                return array_values(array_unique($results, SORT_REGULAR));
-            }
-        }
-
-        $poweredByHeader = isset($headers['x-powered-by']) ? implode(' ', $headers['x-powered-by']) : '';
-
-        if (preg_match('/php\/?\s*([0-9]+(?:\.[0-9]+){1,2})/i', $poweredByHeader, $matches) === 1) {
-            $results[] = DetectedTechnology::fromArray([
-                'name' => 'PHP',
-                'version' => $matches[1],
-                'category' => 'language',
-                'confidence' => 92,
-                'slug' => 'php',
-                'evidence' => ['x-powered-by'],
-            ])->toFrontendArray();
-        }
-
-        if (isset($headers['x-powered-by']) && str_contains(mb_strtolower(implode(' ', $headers['x-powered-by'])), 'laravel')) {
-            $laravelVersion = null;
-            $poweredBy = $poweredByHeader;
-
-            if (preg_match('/laravel(?:\s+framework|\s+v|\/)?\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)/i', $poweredBy, $matches) === 1) {
-                $laravelVersion = $matches[1];
-            }
-
-            $results[] = DetectedTechnology::fromArray([
-                'name' => 'Laravel',
-                'version' => $laravelVersion,
-                'category' => 'framework',
-                'confidence' => 86,
-                'slug' => 'laravel',
-                'evidence' => ['x-powered-by'],
-            ])->toFrontendArray();
-        }
-
-        if (isset($headers['server'])) {
-            $serverHeader = implode(' ', $headers['server']);
-            $server = mb_strtolower($serverHeader);
-
-            if (str_contains($server, 'nginx')) {
-                $version = null;
-
-                if (preg_match('/nginx\/([0-9]+(?:\.[0-9]+){0,2})/i', $serverHeader, $matches) === 1) {
-                    $version = $matches[1];
-                }
-
-                $results[] = DetectedTechnology::fromArray([
-                    'name' => 'Nginx',
-                    'version' => $version,
-                    'category' => 'web-server',
-                    'confidence' => 82,
-                    'slug' => 'nginx',
-                    'evidence' => ['server'],
-                ])->toFrontendArray();
-            }
-
-            if (str_contains($server, 'apache')) {
-                $version = null;
-
-                if (preg_match('/apache(?:\s+http\s+server)?\/([0-9]+(?:\.[0-9]+){0,2})/i', $serverHeader, $matches) === 1) {
-                    $version = $matches[1];
-                }
-
-                $results[] = DetectedTechnology::fromArray([
-                    'name' => 'Apache HTTP Server',
-                    'version' => $version,
-                    'category' => 'web-server',
-                    'confidence' => 80,
-                    'slug' => 'apache',
-                    'evidence' => ['server'],
-                ])->toFrontendArray();
-            }
-        }
-
-        return array_values(array_unique($results, SORT_REGULAR));
+        // Pipeline oficial: la clasificacion tecnologica se realiza exclusivamente en RunTechnologyScanJob.
+        return [];
     }
 
     /**
-     * @param array<string, array<int, string>> $headers
+     * @param  array<string, array<int, string>>  $headers
      */
     private function hasDrupalBaseSignature(array $headers, string $bodyRaw): bool
     {
@@ -212,19 +67,41 @@ final class WebsiteMonitoringStrategy implements AssetMonitoringStrategyInterfac
     }
 
     /**
-     * @param array<string, array<int, string>> $headers
+     * @param  array<string, array<int, string>>  $headers
      */
-    private function hasWordPressBaseSignature(array $headers, string $body): bool
+    private function hasWordPressBaseSignature(array $headers, string $body, array $probes): bool
     {
-        if (str_contains($body, 'wp-content') || str_contains($body, 'wp-includes')) {
+        if (
+            str_contains($body, 'wp-content')
+            || str_contains($body, 'wp-includes')
+            || str_contains($body, '/wp-json/')
+            || str_contains($body, 'api.w.org')
+        ) {
             return true;
+        }
+
+        if (preg_match('/<meta[^>]+name=["\']generator["\'][^>]+content=["\']\s*wordpress\b/i', $body) === 1) {
+            return true;
+        }
+
+        foreach ($probes as $probe) {
+            $path = mb_strtolower((string) ($probe['path'] ?? ''));
+            $status = (int) ($probe['status'] ?? 0);
+
+            if (! in_array($status, [200, 301, 302], true)) {
+                continue;
+            }
+
+            if (in_array($path, ['/wp-json/', '/wp-login.php', '/wp-content/', '/wp-includes/'], true)) {
+                return true;
+            }
         }
 
         return isset($headers['x-pingback']) && str_contains(mb_strtolower(implode(' ', $headers['x-pingback'])), 'xmlrpc.php');
     }
 
     /**
-     * @param array<string, array<int, string>> $headers
+     * @param  array<string, array<int, string>>  $headers
      */
     private function hasWixBaseSignature(array $headers, string $body): bool
     {
@@ -238,5 +115,87 @@ final class WebsiteMonitoringStrategy implements AssetMonitoringStrategyInterfac
         }
 
         return isset($headers['x-wix-request-id']) || isset($headers['x-wix-punisher']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function extractRedirectContext(Site $site, Response $response, MonitoringHttpClientFactory $httpClientFactory): array
+    {
+        $siteUrl = (string) $site->url;
+        $initialStatus = 0;
+        $initialLocation = null;
+
+        try {
+            $initialResponse = $httpClientFactory
+                ->make(['Accept' => 'text/html,*/*;q=0.8'])
+                ->withoutRedirecting()
+                ->get($siteUrl);
+
+            $initialStatus = (int) $initialResponse->status();
+            $initialLocation = $initialResponse->header('location');
+        } catch (\Throwable) {
+            // Si falla la sonda inicial, usamos el estado de la respuesta principal.
+        }
+
+        $finalStatus = (int) $response->status();
+        $finalUrl = $this->resolveFinalUrl($response, $siteUrl);
+        $initialHost = parse_url($siteUrl, PHP_URL_HOST);
+        $finalHost = parse_url($finalUrl, PHP_URL_HOST);
+        $isExternal = is_string($initialHost)
+            && is_string($finalHost)
+            && $initialHost !== ''
+            && $finalHost !== ''
+            && mb_strtolower($initialHost) !== mb_strtolower($finalHost);
+
+        return [
+            'initial_status' => $initialStatus,
+            'initial_location' => $initialLocation,
+            'final_url' => $finalUrl,
+            'final_status' => $finalStatus,
+            'is_redirect' => in_array($initialStatus, [301, 302, 307, 308], true),
+            'is_external' => $isExternal,
+            'final_accessible' => $finalStatus >= 200 && $finalStatus < 400,
+        ];
+    }
+
+    private function resolveFinalUrl(Response $response, string $fallbackUrl): string
+    {
+        $effectiveUrl = method_exists($response, 'effectiveUri') ? (string) $response->effectiveUri() : '';
+
+        if ($effectiveUrl !== '') {
+            return $effectiveUrl;
+        }
+
+        return $fallbackUrl;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function probeCmsPaths(string $baseUrl, MonitoringHttpClientFactory $httpClientFactory): array
+    {
+        $paths = ['/wp-json/', '/wp-login.php', '/wp-content/', '/wp-includes/', '/core/lib/Drupal.php', '/core/CHANGELOG.txt'];
+        $client = $httpClientFactory->make(['Accept' => 'text/plain,text/html,*/*;q=0.8']);
+        $probes = [];
+
+        foreach ($paths as $path) {
+            try {
+                $response = $client->get(rtrim($baseUrl, '/').'/'.ltrim($path, '/'));
+                $probes[] = [
+                    'path' => $path,
+                    'status' => (int) $response->status(),
+                    'body_raw' => mb_substr((string) $response->body(), 0, 5000),
+                ];
+            } catch (\Throwable) {
+                $probes[] = [
+                    'path' => $path,
+                    'status' => 0,
+                    'body_raw' => '',
+                ];
+            }
+        }
+
+        return $probes;
     }
 }

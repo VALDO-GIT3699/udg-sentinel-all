@@ -1,60 +1,69 @@
-﻿# <?php echo e($exception->class()); ?> - <?php echo $exception->title(); ?>
+﻿# API Interna - Asset Intelligence y Monitoring
 
+## Endpoints nuevos
 
-<?php echo $exception->message(); ?>
+### GET /monitoring/assets/intelligence
+Retorna dashboard de gobierno de activos (Inertia).
 
+### POST /monitoring/sites/{site}/classification/manual
+Aplica clasificacion manual y bloquea sobreescritura automatica.
 
-PHP <?php echo e(PHP_VERSION); ?>
+Payload:
+```json
+{
+  "asset_type": "web_application",
+  "asset_role": "lms",
+  "confidence_pct": 95,
+  "notes": "Validado por equipo de arquitectura"
+}
+```
 
-Laravel <?php echo e(app()->version()); ?>
+Respuesta exitosa: 200 JSON
 
-<?php echo e($exception->request()->httpHost()); ?>
+### POST /monitoring/sites/{site}/classification/approve
+Aprueba en un clic la clasificacion sugerida actual y la convierte en manual bloqueada.
 
+Payload: vacio
 
-## Stack Trace
+Respuesta exitosa: 200 JSON
 
-<?php $__currentLoopData = $exception->frames(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $index => $frame): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
-<?php echo e($index); ?> - <?php echo e($frame->file()); ?>:<?php echo e($frame->line()); ?>
+### GET /analytics/overview
+Vista ejecutiva de analitica institucional (Inertia).
 
-<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+### GET /api/analytics/overview
+Retorna resumen analitico para integraciones internas.
 
-## Request
+### GET /monitoring/sites/{siteId}/detail
+Incluye campos de Asset Intelligence cuando el esquema esta disponible:
+- asset_type
+- asset_role
+- asset_confidence_pct
+- asset_classification_source
 
-<?php echo e($exception->request()->method()); ?> <?php echo e(\Illuminate\Support\Str::start($exception->request()->path(), '/')); ?>
+Si el esquema no esta disponible:
+- `assetIntelligenceEnabled=false`
+- filtros/opciones vacias
+- comportamiento degradado sin error 500
 
+## Comandos CLI relevantes
 
-## Headers
+- `php artisan inventory:dispatch-asset-classifications --limit=200`
+- `php artisan monitoring:dispatch-asset-monitoring --limit=200`
 
-<?php $__empty_1 = true; $__currentLoopData = $exception->requestHeaders(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key => $value): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
-* **<?php echo e($key); ?>**: <?php echo $value; ?>
+## Eventos de dominio
 
-<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
-No header data available.
-<?php endif; ?>
+- `Modules\\Inventory\\Events\\AssetClassified`
+- `Modules\\Inventory\\Events\\AssetReclassified`
+- `Modules\\Inventory\\Events\\ClassificationOverridden`
+- `Modules\\Monitoring\\Events\\MonitoringCompleted`
+- `Modules\\Monitoring\\Events\\AvailabilityChanged`
+- `Modules\\Monitoring\\Events\\TechnologyChanged`
+- `Modules\\Monitoring\\Events\\CertificateExpiring`
+- `Modules\\Monitoring\\Events\\AlertTriggered`
+- `Modules\\Monitoring\\Events\\AlertResolved`
 
-## Route Context
-
-<?php $__empty_1 = true; $__currentLoopData = $exception->applicationRouteContext(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $name => $value): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
-<?php echo e($name); ?>: <?php echo $value; ?>
-
-<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
-No routing data available.
-<?php endif; ?>
-
-## Route Parameters
-
-<?php if($routeParametersContext = $exception->applicationRouteParametersContext()): ?>
-<?php echo $routeParametersContext; ?>
-
-<?php else: ?>
-No route parameter data available.
-<?php endif; ?>
-
-## Database Queries
-
-<?php $__empty_1 = true; $__currentLoopData = $exception->applicationQueries(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as ['connectionName' => $connectionName, 'sql' => $sql, 'time' => $time]): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
-* <?php echo e($connectionName); ?> - <?php echo $sql; ?> (<?php echo e($time); ?> ms)
-<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
-No database queries detected.
-<?php endif; ?>
-<?php /**PATH /var/www/html/vendor/laravel/framework/src/Illuminate/Foundation/Providers/../resources/exceptions/renderer/markdown.blade.php ENDPATH**/ ?>
+Payload base:
+- siteId
+- source (automatic|manual)
+- payload (clasificacion, scores, recomendaciones)
+- classifiedAt

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,6 +17,20 @@ final class Site extends Model
 {
     use HasFactory;
     use SoftDeletes;
+
+    public const LIFECYCLE_STATUSES = [
+        '1ra Etapa',
+        '2da Etapa',
+        'Migrando',
+        'Migrado',
+        'Eliminado',
+        'Solicitud de baja',
+        'Migrado y publicado',
+        'N/A',
+        'Migración de CMS',
+        'Sistema',
+        'Otro',
+    ];
 
     protected $fillable = [
         'site_group_id',
@@ -35,6 +50,8 @@ final class Site extends Model
         'is_monitored',
         'priority',
         'current_status',
+        'lifecycle_status',
+        'elimination_ticket',
         'current_score',
         'current_score_level',
         'last_checked_at',
@@ -44,17 +61,18 @@ final class Site extends Model
     ];
 
     protected $casts = [
-        'is_active'       => 'boolean',
-        'is_monitored'    => 'boolean',
-        'priority'        => 'integer',
-        'current_score'   => 'integer',
+        'is_active' => 'boolean',
+        'is_monitored' => 'boolean',
+        'priority' => 'integer',
+        'current_score' => 'integer',
         'asset_confidence_pct' => 'integer',
+        'lifecycle_status' => 'string',
         'check_interval_min' => 'integer',
         'last_checked_at' => 'immutable_datetime',
         'asset_last_classified_at' => 'immutable_datetime',
         'asset_classification_locked_at' => 'immutable_datetime',
         'asset_classification_evidence' => 'array',
-        'tags'            => 'array',
+        'tags' => 'array',
     ];
 
     // -----------------------------------------------------------------
@@ -86,6 +104,11 @@ final class Site extends Model
     public function latestCheck(): HasOne
     {
         return $this->hasOne(SiteCheck::class)->latestOfMany('checked_at');
+    }
+
+    public function inspectionProfile(): HasOne
+    {
+        return $this->hasOne(SiteInspectionProfile::class);
     }
 
     public function sslCertificate(): HasOne
@@ -182,47 +205,46 @@ final class Site extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<Site> $query
-     * @return \Illuminate\Database\Eloquent\Builder<Site>
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
      */
-    public function scopeActive(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<Site> $query
-     * @return \Illuminate\Database\Eloquent\Builder<Site>
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
      */
-    public function scopeMonitored(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeMonitored(Builder $query): Builder
     {
         return $query->where('is_monitored', true);
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<Site> $query
-     * @return \Illuminate\Database\Eloquent\Builder<Site>
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
      */
-    public function scopeDown(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeDown(Builder $query): Builder
     {
         return $query->where('current_status', 'down');
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<Site> $query
-     * @return \Illuminate\Database\Eloquent\Builder<Site>
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
      */
-    public function scopeCritical(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeCritical(Builder $query): Builder
     {
         return $query->where('priority', 1);
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<Site> $query
-     * @param string $domain
-     * @return \Illuminate\Database\Eloquent\Builder<Site>
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
      */
-    public function scopeByDomain(\Illuminate\Database\Eloquent\Builder $query, string $domain): \Illuminate\Database\Eloquent\Builder
+    public function scopeByDomain(Builder $query, string $domain): Builder
     {
         return $query->where('domain', $domain);
     }
@@ -249,10 +271,10 @@ final class Site extends Model
     public function getStatusColorAttribute(): string
     {
         return match ($this->current_status) {
-            'up'       => 'green',
-            'down'     => 'red',
+            'up' => 'green',
+            'down' => 'red',
             'degraded' => 'amber',
-            default    => 'gray',
+            default => 'gray',
         };
     }
 }

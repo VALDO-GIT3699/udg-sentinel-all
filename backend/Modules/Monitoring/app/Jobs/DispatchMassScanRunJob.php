@@ -23,7 +23,7 @@ final class DispatchMassScanRunJob implements ShouldQueue
     public int $tries = 1;
 
     /**
-     * @param array<int, int> $siteIds
+     * @param  array<int, int>  $siteIds
      */
     public function __construct(
         private readonly string $runId,
@@ -40,7 +40,7 @@ final class DispatchMassScanRunJob implements ShouldQueue
 
         if (is_string($triggerMode) && in_array($triggerMode, ['manual_selected', 'manual_single'], true)) {
             foreach ($this->siteIds as $siteId) {
-                DispatchSiteScanChainJob::dispatchSync((int) $siteId, $this->runId, true);
+                DispatchSiteScanChainJob::dispatch((int) $siteId, $this->runId, true);
             }
 
             return;
@@ -53,7 +53,7 @@ final class DispatchMassScanRunJob implements ShouldQueue
         }
 
         Bus::batch($jobs)
-            ->name('monitoring-mass-scan:' . $this->runId)
+            ->name('monitoring-mass-scan:'.$this->runId)
             ->dispatch();
     }
 

@@ -9,30 +9,27 @@ use App\Contracts\Repositories\SiteCheckRepositoryInterface;
 use App\Contracts\Repositories\SiteRepositoryInterface;
 use App\Http\Controllers\Controller;
 use App\Models\MonitoringMassScanRun;
-use App\Models\Alert;
 use App\Models\Setting;
-use App\Models\SiteGroup;
 use App\Models\Site;
 use App\Models\SiteCheck;
-use App\Models\SslCertificate;
+use App\Models\SiteGroup;
 use App\Models\SiteTechnology;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redis;
-use Modules\Monitoring\Jobs\DispatchMassScanRunJob;
-use Modules\Monitoring\Jobs\RunHeadCheckJob;
-use Modules\Monitoring\Jobs\RunSecurityHeadersCheckJob;
-use Modules\Monitoring\Jobs\RunSslCheckJob;
-use Modules\Monitoring\Jobs\RunTechnologyScanJob;
-use Modules\Monitoring\Support\DetectedTechnology;
-use Modules\Monitoring\Support\MassScanProgress;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response;
+use Modules\Monitoring\Jobs\DispatchMassScanRunJob;
+use Modules\Monitoring\Support\DetectedTechnology;
+use Modules\Monitoring\Support\MassScanProgress;
 
 final class DashboardController extends Controller
 {
@@ -42,11 +39,30 @@ final class DashboardController extends Controller
 
     private const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
 
+    // TTL corto a proposito: los datos cambian con cada escaneo, pero un
+    // cache de unos segundos ya absorbe el patron real de carga (el
+    // auto-refresh del dashboard cada 5s + varias personas viendo el mismo
+    // panel a la vez), sin arriesgar mostrar cifras obsoletas por mucho tiempo.
+    private const DASHBOARD_CACHE_TTL_SECONDS = 45;
+
     public function __construct(
         private readonly SiteRepositoryInterface $siteRepository,
         private readonly SiteCheckRepositoryInterface $siteCheckRepository,
         private readonly AlertRepositoryInterface $alertRepository,
-    ) {
+    ) {}
+
+    /**
+     * Invalida el cache de agregados del dashboard. Se llama desde los jobs
+     * de escaneo al terminar, para que el dashboard no se quede mostrando
+     * conteos/diagnosticos desactualizados durante el TTL del cache.
+     */
+    public static function forgetDashboardCache(): void
+    {
+        Cache::forget('monitoring:dashboard:status-counts:all');
+        Cache::forget('monitoring:dashboard:diagnostic-breakdown');
+        Cache::forget('monitoring:dashboard:pipeline-metrics');
+        Cache::forget('monitoring:dashboard:preventive-expirations');
+        Cache::forget('monitoring:dashboard:search-suggestions');
     }
 
     public function index(Request $request): Response
@@ -57,12 +73,14 @@ final class DashboardController extends Controller
             'status' => $request->string('status')->toString() ?: 'all',
             'group_id' => $request->integer('group_id') ?: null,
             'search' => $request->string('search')->toString(),
+            'cms' => $request->string('cms')->toString() ?: 'all',
+            'lifecycle_status' => $request->string('lifecycle_status')->toString(),
             'priority' => $request->integer('priority') ?: null,
         ];
 
         $sites = $this->siteRepository->paginate(
             perPage: max(1, min(self::DASHBOARD_MAX_PER_PAGE, $request->integer('per_page', self::DASHBOARD_DEFAULT_PER_PAGE))),
-            filters: array_filter($filters, static fn ($value): bool => $value !== null && $value !== '')
+            filters: array_filter($filters, static fn ($value): bool => $value !== null && $value !== ''),
         );
 
         $sites = $this->mapSitesForDashboard($sites);
@@ -71,6 +89,8 @@ final class DashboardController extends Controller
             'filters' => [
                 'search' => (string) ($filters['search'] ?? ''),
                 'status' => (string) ($filters['status'] ?? 'all'),
+                'cms' => (string) ($filters['cms'] ?? 'all'),
+                'lifecycle_status' => (string) ($filters['lifecycle_status'] ?? ''),
             ],
             'statusCounts' => $this->dashboardStatusCounts(),
             'diagnosticBreakdown' => $this->diagnosticBreakdown(),
@@ -82,6 +102,8 @@ final class DashboardController extends Controller
             'preventiveExpirations' => $this->preventiveExpirations(),
             'scheduledScansEnabled' => $this->scheduledScansEnabled(),
             'canManageSettings' => (bool) $request->user()?->can('monitoring.manage_settings'),
+            'canManageSites' => (bool) $request->user()?->can('monitoring.manage_sites'),
+            'lifecycleStatuses' => Site::LIFECYCLE_STATUSES,
             'refreshIntervalMs' => self::DASHBOARD_REFRESH_INTERVAL_MS,
             'updatedAt' => now()->toIso8601String(),
         ]);
@@ -90,160 +112,17 @@ final class DashboardController extends Controller
     public function exportReport(Request $request)
     {
         $payload = $this->buildExecutivePdfPayload();
-        $fileName = 'UDG_Sentinel_Reporte_General_' . now()->format('d_m_Y') . '.pdf';
+        $fileName = 'UDG_Sentinel_Reporte_General_'.now()->format('d_m_Y').'.pdf';
 
         $pdf = Pdf::loadView('monitoring::reports.executive-report', $payload)
             ->setPaper('a4', 'portrait');
 
         return response($pdf->output(), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Content-Disposition' => 'attachment; filename="'.$fileName.'"',
             'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
             'Pragma' => 'no-cache',
         ]);
-    }
-
-    private function warmTelemetryPipeline(): void
-    {
-        if (! app()->environment(['local', 'development'])) {
-            return;
-        }
-
-        if (! Cache::add('monitoring:dashboard:warmup', now()->timestamp, 60)) {
-            return;
-        }
-
-        app()->terminating(function (): void {
-            $this->dispatchWarmupCommands();
-        });
-    }
-
-    private function dispatchWarmupCommands(): void
-    {
-        $commands = [
-            ['monitoring:dispatch-head-checks', ['--limit' => 50, '--chunk' => 25, '--stagger' => 0]],
-            ['monitoring:dispatch-ssl-checks', ['--limit' => 50, '--chunk' => 25, '--stagger' => 0]],
-            ['monitoring:dispatch-security-headers-checks', ['--limit' => 50, '--chunk' => 25, '--stagger' => 0]],
-            ['monitoring:dispatch-technology-scans', ['--limit' => 50]],
-        ];
-
-        foreach ($commands as [$command, $arguments]) {
-            try {
-                Artisan::call($command, $arguments);
-            } catch (\Throwable) {
-                // El warm-up es opcional y no debe romper el request del dashboard.
-            }
-        }
-    }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function preventiveExpirations(): array
-    {
-        $windowEnd = now()->addDays(60);
-
-        $rows = Site::query()
-            ->selectRaw(
-                'DISTINCT ON (sites.id) sites.id as site_id, sites.name as site_name, sites.domain as domain, ssl_certificates.valid_until as valid_until, ssl_certificates.issuer as issuer'
-            )
-            ->join('ssl_certificates', 'ssl_certificates.site_id', '=', 'sites.id')
-            ->whereNotNull('ssl_certificates.valid_until')
-            ->where('ssl_certificates.valid_until', '>=', now())
-            ->where('ssl_certificates.valid_until', '<=', $windowEnd)
-            ->orderBy('sites.id')
-            ->orderByDesc('ssl_certificates.valid_until')
-            ->orderByDesc('ssl_certificates.id')
-            ->limit(250)
-            ->get();
-
-        return $rows
-            ->map(static function ($row): array {
-                $validUntil = $row->valid_until instanceof \Illuminate\Support\Carbon
-                    ? $row->valid_until
-                    : \Illuminate\Support\Carbon::parse((string) $row->valid_until);
-                $daysRemaining = max(0, (int) now()->diffInDays($validUntil, false));
-
-                return [
-                    'id' => (int) $row->site_id,
-                    'site_name' => (string) $row->site_name,
-                    'domain' => (string) $row->domain,
-                    'valid_until' => $validUntil->toIso8601String(),
-                    'days_remaining' => $daysRemaining,
-                    'issuer' => (string) ($row->issuer ?? ''),
-                    'month_label' => $validUntil->format('Y-m'),
-                ];
-            })
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function buildExecutivePdfPayload(): array
-    {
-        $statusCounts = $this->dashboardStatusCounts();
-        $diagnosticBreakdown = $this->diagnosticBreakdown();
-        $preventiveExpirations = array_slice($this->preventiveExpirations(), 0, 12);
-        $recentRuns = array_slice($this->massScanHistory(), 0, 8);
-
-        $sites = Site::query()
-            ->with(['latestCheck', 'sslCertificate', 'cmsDetail', 'siteTechnologies.technology'])
-            ->where('is_active', true)
-            ->where('is_monitored', true)
-            ->orderByRaw('LOWER(name)')
-            ->orderBy('name')
-            ->orderBy('id')
-            ->limit(20)
-            ->get()
-            ->map(function (Site $site): array {
-                $status = strtolower((string) ($site->current_status ?? 'unknown'));
-                $resolvedStatus = $this->resolveDashboardStatus($site, $status, $site->latestCheck);
-                $diagnosis = $this->resolveSiteDiagnosis($site, $status, $site->latestCheck);
-                $technology = $this->resolveTechnologyInfo($site);
-                $certificate = $site->sslCertificate;
-
-                $certificateLabel = 'Sin certificado';
-
-                if ($certificate !== null) {
-                    $validUntil = $certificate->valid_until;
-                    $daysRemaining = $validUntil !== null
-                        ? (int) now()->diffInDays($validUntil, false)
-                        : $certificate->days_remaining;
-
-                    if ($daysRemaining !== null && $daysRemaining < 0) {
-                        $certificateLabel = 'Expirado';
-                    } elseif ($daysRemaining !== null && $daysRemaining <= 30) {
-                        $certificateLabel = 'Vence en ' . $daysRemaining . ' días';
-                    } else {
-                        $certificateLabel = 'Vigente';
-                    }
-                }
-
-                return [
-                    'name' => (string) $site->name,
-                    'domain' => (string) $site->domain,
-                    'status' => $resolvedStatus,
-                    'status_label' => strtoupper($resolvedStatus),
-                    'diagnostic_label' => (string) ($diagnosis['label'] ?? 'Sin diagnóstico'),
-                    'diagnostic_reason' => (string) ($diagnosis['reason'] ?? ''),
-                    'technology' => (string) ($technology['label'] ?? 'No identificada'),
-                    'certificate' => $certificateLabel,
-                    'last_checked_at' => optional($site->last_checked_at)?->toIso8601String(),
-                ];
-            })
-            ->values()
-            ->all();
-
-        return [
-            'generated_at' => now()->toIso8601String(),
-            'status_counts' => $statusCounts,
-            'diagnostic_breakdown' => $diagnosticBreakdown,
-            'preventive_expirations' => $preventiveExpirations,
-            'recent_runs' => $recentRuns,
-            'sites' => $sites,
-        ];
     }
 
     public function groupView(Request $request, SiteGroup $group): Response
@@ -260,7 +139,7 @@ final class DashboardController extends Controller
             'filters' => $filters,
             'sites' => $this->siteRepository->paginate(
                 perPage: max(1, min(100, $request->integer('per_page', 20))),
-                filters: array_filter($filters, static fn ($value): bool => $value !== null && $value !== '')
+                filters: array_filter($filters, static fn ($value): bool => $value !== null && $value !== ''),
             ),
             'statusCounts' => $this->dashboardStatusCounts($group->id),
             'openAlerts' => $this->alertRepository->recentOpenForGroup($group->id, 20),
@@ -337,6 +216,7 @@ final class DashboardController extends Controller
             'dashboardUrl' => route('monitoring.dashboard'),
             'updatedAt' => now()->toIso8601String(),
             'canManageSettings' => (bool) $request->user()?->can('monitoring.manage_settings'),
+            'canCancelScan' => (bool) $request->user()?->can('monitoring.run_mass_scan'),
         ]);
     }
 
@@ -355,6 +235,28 @@ final class DashboardController extends Controller
         return response()->json([
             'exists' => true,
             'active' => ($progress['status'] ?? 'running') === 'running',
+            'progress' => $progress,
+        ]);
+    }
+
+    public function cancelScan(Request $request, string $runId): JsonResponse
+    {
+        $progress = MassScanProgress::cancel($runId);
+
+        if ($progress === null) {
+            return response()->json([
+                'cancelled' => false,
+                'message' => 'Este escaneo ya no está en ejecución.',
+                'progress' => MassScanProgress::get($runId) ?? $this->resolveRunProgress($runId),
+            ], 409);
+        }
+
+        activity()->causedBy($request->user())
+            ->log('Canceló el escaneo masivo en curso (run '.$runId.').');
+
+        return response()->json([
+            'cancelled' => true,
+            'message' => 'Escaneo cancelado. Los sitios sin re-inspeccionar conservan su última tecnología detectada, marcados como interrumpidos.',
             'progress' => $progress,
         ]);
     }
@@ -384,211 +286,6 @@ final class DashboardController extends Controller
         return back()->with('success', $message);
     }
 
-    private function scanAllResponse(
-        Request $request,
-        bool $started,
-        string $status,
-        string $message,
-        ?array $progress,
-        ?string $runId = null,
-        ?string $redirectUrl = null,
-    ): RedirectResponse|JsonResponse {
-        if ($request->expectsJson() || $request->wantsJson()) {
-            return response()->json([
-                'started' => $started,
-                'status' => $status,
-                'message' => $message,
-                'progress' => $progress,
-                'run_id' => $runId,
-                'redirect_url' => $redirectUrl,
-            ]);
-        }
-
-        $flashKey = $started ? 'success' : 'warning';
-
-        return back()->with($flashKey, $message);
-    }
-
-    /**
-     * @param array<int, int> $siteIds
-     */
-    private function startManualScanFromIds(
-        Request $request,
-        array $siteIds,
-        string $triggerMode,
-        bool $enforceMassInterval,
-        string $successMessage
-    ): RedirectResponse|JsonResponse {
-        $currentProgress = MassScanProgress::getCurrent();
-
-        if (is_array($currentProgress) && ($currentProgress['status'] ?? 'running') === 'running') {
-            $currentRunId = (string) ($currentProgress['run_id'] ?? '');
-
-            return $this->scanAllResponse(
-                request: $request,
-                started: false,
-                status: 'already_running',
-                message: 'Ya hay una actualización en curso. Puedes seguirla en la página de progreso.',
-                progress: $currentProgress,
-                runId: $currentRunId !== '' ? $currentRunId : null,
-                redirectUrl: $currentRunId !== '' ? route('monitoring.scans.show', ['runId' => $currentRunId]) : null,
-            );
-        }
-
-        if (! Cache::add('monitoring:manual-scan:cooldown', now()->timestamp, 10)) {
-            return $this->scanAllResponse(
-                request: $request,
-                started: false,
-                status: 'cooldown',
-                message: 'Ya hay una actualización en proceso de arranque. Espera unos segundos e intenta de nuevo.',
-                progress: MassScanProgress::getCurrent(),
-            );
-        }
-
-        if ($siteIds === []) {
-            return $this->scanAllResponse(
-                request: $request,
-                started: false,
-                status: 'no_sites',
-                message: 'No hay sitios disponibles para ejecutar este escaneo.',
-                progress: null,
-            );
-        }
-
-        if ($enforceMassInterval) {
-            $minIntervalMinutes = max(5, (int) Setting::get('monitoring.mass_scan_min_interval_minutes', 15));
-
-            $lastRun = MonitoringMassScanRun::query()
-                ->where('trigger_mode', 'manual')
-                ->orderByDesc('started_at')
-                ->first();
-
-            if ($lastRun instanceof MonitoringMassScanRun && $lastRun->started_at !== null) {
-                $nextAllowedAt = $lastRun->started_at->addMinutes($minIntervalMinutes);
-
-                if ($nextAllowedAt->isFuture()) {
-                    return $this->scanAllResponse(
-                        request: $request,
-                        started: false,
-                        status: 'throttled',
-                        message: sprintf(
-                            'Escaneo masivo bloqueado por protección operativa. Intenta de nuevo en %d minuto(s).',
-                            now()->diffInMinutes($nextAllowedAt)
-                        ),
-                        progress: null,
-                    );
-                }
-            }
-        }
-
-        $progress = MassScanProgress::start(
-            totalSites: count($siteIds),
-            initiatedByUserId: $request->user()?->id,
-            triggerMode: $triggerMode,
-        );
-
-        $runId = (string) ($progress['run_id'] ?? '');
-
-        if ($runId === '') {
-            return $this->scanAllResponse(
-                request: $request,
-                started: false,
-                status: 'failed_to_start',
-                message: 'No fue posible iniciar el escaneo solicitado.',
-                progress: null,
-            );
-        }
-
-        if (in_array($triggerMode, ['manual_selected', 'manual_single'], true)) {
-            DispatchMassScanRunJob::dispatchSync($runId, $siteIds);
-        } else {
-            DispatchMassScanRunJob::dispatch($runId, $siteIds);
-        }
-
-        return $this->scanAllResponse(
-            request: $request,
-            started: true,
-            status: 'started',
-            message: $successMessage,
-            progress: MassScanProgress::get($runId),
-            runId: $runId,
-            redirectUrl: route('monitoring.scans.show', ['runId' => $runId]),
-        );
-    }
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    private function resolveRunProgress(string $runId): ?array
-    {
-        $fromCache = MassScanProgress::get($runId);
-
-        if (is_array($fromCache)) {
-            return $fromCache;
-        }
-
-        if (! \Illuminate\Support\Facades\Schema::hasTable('monitoring_mass_scan_runs')) {
-            return null;
-        }
-
-        $run = MonitoringMassScanRun::query()->where('run_id', $runId)->first();
-
-        if (! $run instanceof MonitoringMassScanRun) {
-            return null;
-        }
-
-        $totalSites = max(0, (int) $run->total_sites);
-        $totalTasks = max(0, (int) $run->total_tasks);
-        $completedTasks = max(0, (int) $run->completed_tasks);
-        $failedTasks = max(0, (int) $run->failed_tasks);
-        $remainingTasks = max(0, $totalTasks - $completedTasks);
-        $progressPct = $totalTasks > 0 ? min(100.0, round(($completedTasks / $totalTasks) * 100, 2)) : 100.0;
-
-        return [
-            'run_id' => $run->run_id,
-            'status' => $run->status,
-            'started_at' => optional($run->started_at)?->toIso8601String() ?? now()->toIso8601String(),
-            'last_progress_at' => optional($run->last_progress_at)?->toIso8601String(),
-            'completed_at' => optional($run->completed_at)?->toIso8601String(),
-            'total_sites' => $totalSites,
-            'total_tasks' => $totalTasks,
-            'completed_tasks' => $completedTasks,
-            'failed_tasks' => $failedTasks,
-            'remaining_tasks' => $remainingTasks,
-            'progress_pct' => $progressPct,
-            'stages' => [
-                'uptime' => [
-                    'completed' => 0,
-                    'failed' => 0,
-                    'total' => $totalSites,
-                    'remaining' => $totalSites,
-                    'progress_pct' => 0,
-                ],
-                'ssl' => [
-                    'completed' => 0,
-                    'failed' => 0,
-                    'total' => $totalSites,
-                    'remaining' => $totalSites,
-                    'progress_pct' => 0,
-                ],
-                'headers' => [
-                    'completed' => 0,
-                    'failed' => 0,
-                    'total' => $totalSites,
-                    'remaining' => $totalSites,
-                    'progress_pct' => 0,
-                ],
-                'technology' => [
-                    'completed' => 0,
-                    'failed' => 0,
-                    'total' => $totalSites,
-                    'remaining' => $totalSites,
-                    'progress_pct' => 0,
-                ],
-            ],
-        ];
-    }
-
     public function searchSuggestionsEndpoint(Request $request): JsonResponse
     {
         $query = trim($request->string('q')->toString());
@@ -602,7 +299,7 @@ final class DashboardController extends Controller
 
         $items = Site::query()
             ->where(function ($builder) use ($query, $operator): void {
-                $needle = '%' . $query . '%';
+                $needle = '%'.$query.'%';
                 $builder->where('name', $operator, $needle)
                     ->orWhere('domain', $operator, $needle);
             })
@@ -706,7 +403,7 @@ final class DashboardController extends Controller
                     'display_status_code' => $this->resolveDashboardStatus(
                         $site,
                         strtolower((string) ($site->current_status ?? 'unknown')),
-                        $site->latestCheck
+                        $site->latestCheck,
                     ),
                     'last_checked_at' => optional($site->last_checked_at)?->toIso8601String(),
                 ];
@@ -724,6 +421,365 @@ final class DashboardController extends Controller
     }
 
     /**
+     * Serie de tiempo de latencia promedio (bucket por minuto) para la
+     * grafica "en vivo" del dashboard. TTL corto a proposito: el punto es
+     * que se sienta actualizandose, no un agregado estable como el resto.
+     */
+    public function latencyTimeseries(Request $request): JsonResponse
+    {
+        $minutes = max(10, min(120, $request->integer('minutes', 30)));
+
+        $points = Cache::remember(
+            'monitoring:dashboard:latency-timeseries:'.$minutes,
+            15,
+            function () use ($minutes): array {
+                $since = now()->subMinutes($minutes);
+
+                $rows = SiteCheck::query()
+                    ->selectRaw("date_trunc('minute', checked_at) as bucket, AVG(response_time_ms) as avg_ms, COUNT(*) as sample_count")
+                    ->where('checked_at', '>=', $since)
+                    ->whereNotNull('response_time_ms')
+                    ->groupBy('bucket')
+                    ->orderBy('bucket')
+                    ->get();
+
+                return $rows
+                    ->map(static function ($row): array {
+                        $bucket = $row->bucket instanceof Carbon
+                            ? $row->bucket
+                            : Carbon::parse((string) $row->bucket);
+
+                        return [
+                            'at' => $bucket->toIso8601String(),
+                            'avg_ms' => round((float) $row->avg_ms, 1),
+                            'samples' => (int) $row->sample_count,
+                        ];
+                    })
+                    ->values()
+                    ->all();
+            },
+        );
+
+        return response()->json([
+            'window_minutes' => $minutes,
+            'points' => $points,
+            'server_time' => now()->toIso8601String(),
+        ]);
+    }
+
+    private function warmTelemetryPipeline(): void
+    {
+        if (! app()->environment(['local', 'development'])) {
+            return;
+        }
+
+        if (! Cache::add('monitoring:dashboard:warmup', now()->timestamp, 60)) {
+            return;
+        }
+
+        app()->terminating(function (): void {
+            $this->dispatchWarmupCommands();
+        });
+    }
+
+    private function dispatchWarmupCommands(): void
+    {
+        $commands = [
+            ['monitoring:dispatch-head-checks', ['--limit' => 50, '--chunk' => 25, '--stagger' => 0]],
+            ['monitoring:dispatch-ssl-checks', ['--limit' => 50, '--chunk' => 25, '--stagger' => 0]],
+            ['monitoring:dispatch-security-headers-checks', ['--limit' => 50, '--chunk' => 25, '--stagger' => 0]],
+            ['monitoring:dispatch-technology-scans', ['--limit' => 50]],
+        ];
+
+        foreach ($commands as [$command, $arguments]) {
+            try {
+                Artisan::call($command, $arguments);
+            } catch (\Throwable) {
+                // El warm-up es opcional y no debe romper el request del dashboard.
+            }
+        }
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function preventiveExpirations(): array
+    {
+        return Cache::remember('monitoring:dashboard:preventive-expirations', self::DASHBOARD_CACHE_TTL_SECONDS, function (): array {
+            $windowEnd = now()->addDays(60);
+
+            $rows = Site::query()
+                ->selectRaw(
+                    'DISTINCT ON (sites.id) sites.id as site_id, sites.name as site_name, sites.domain as domain, ssl_certificates.valid_until as valid_until, ssl_certificates.issuer as issuer',
+                )
+                ->join('ssl_certificates', 'ssl_certificates.site_id', '=', 'sites.id')
+                ->where('sites.is_active', true)
+                ->where('sites.is_monitored', true)
+                ->whereIn('sites.current_status', ['up', 'degraded'])
+                ->whereNotNull('ssl_certificates.valid_until')
+                ->where('ssl_certificates.valid_until', '>=', now())
+                ->where('ssl_certificates.valid_until', '<=', $windowEnd)
+                ->orderBy('sites.id')
+                ->orderByDesc('ssl_certificates.valid_until')
+                ->orderByDesc('ssl_certificates.id')
+                ->limit(250)
+                ->get();
+
+            return $rows
+                ->map(static function ($row): array {
+                    $validUntil = $row->valid_until instanceof Carbon
+                        ? $row->valid_until
+                        : Carbon::parse((string) $row->valid_until);
+                    $daysRemaining = max(0, (int) now()->diffInDays($validUntil, false));
+
+                    return [
+                        'id' => (int) $row->site_id,
+                        'site_name' => (string) $row->site_name,
+                        'domain' => (string) $row->domain,
+                        'valid_until' => $validUntil->toIso8601String(),
+                        'days_remaining' => $daysRemaining,
+                        'issuer' => (string) ($row->issuer ?? ''),
+                        'month_label' => $validUntil->format('Y-m'),
+                    ];
+                })
+                ->values()
+                ->all();
+        });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildExecutivePdfPayload(): array
+    {
+        $statusCounts = $this->dashboardStatusCounts();
+        $diagnosticBreakdown = $this->diagnosticBreakdown();
+        $preventiveExpirations = array_slice($this->preventiveExpirations(), 0, 12);
+        $recentRuns = array_slice($this->massScanHistory(), 0, 8);
+
+        $sites = Site::query()
+            ->with(['inspectionProfile'])
+            ->orderByRaw('LOWER(name)')
+            ->orderBy('name')
+            ->orderBy('id')
+            ->get()
+            ->map(function (Site $site): array {
+                $snapshot = $this->inspectionSnapshot($site);
+
+                return [
+                    'name' => (string) $site->name,
+                    'domain' => (string) $site->domain,
+                    'status' => $snapshot['display_status_code'],
+                    'status_label' => strtoupper((string) $snapshot['display_status_code']),
+                    'diagnostic_label' => (string) $snapshot['diagnostic_label'],
+                    'diagnostic_reason' => (string) $snapshot['diagnostic_reason'],
+                    'technology' => (string) $snapshot['technology_label'],
+                    'certificate' => (string) $snapshot['certificate_label'],
+                    'http_status' => $snapshot['http_status'],
+                    'https_status' => $snapshot['https_status'],
+                    'risk_level' => $snapshot['risk_level'],
+                    'last_checked_at' => optional($site->last_checked_at)?->toIso8601String(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'generated_at' => now()->toIso8601String(),
+            'status_counts' => $statusCounts,
+            'diagnostic_breakdown' => $diagnosticBreakdown,
+            'preventive_expirations' => $preventiveExpirations,
+            'recent_runs' => $recentRuns,
+            'sites' => $sites,
+        ];
+    }
+
+    private function scanAllResponse(
+        Request $request,
+        bool $started,
+        string $status,
+        string $message,
+        ?array $progress,
+        ?string $runId = null,
+        ?string $redirectUrl = null,
+    ): RedirectResponse|JsonResponse {
+        if ($request->expectsJson() || $request->wantsJson()) {
+            return response()->json([
+                'started' => $started,
+                'status' => $status,
+                'message' => $message,
+                'progress' => $progress,
+                'run_id' => $runId,
+                'redirect_url' => $redirectUrl,
+            ]);
+        }
+
+        $flashKey = $started ? 'success' : 'warning';
+
+        return back()->with($flashKey, $message);
+    }
+
+    /**
+     * @param  array<int, int>  $siteIds
+     */
+    private function startManualScanFromIds(
+        Request $request,
+        array $siteIds,
+        string $triggerMode,
+        bool $enforceMassInterval,
+        string $successMessage,
+    ): RedirectResponse|JsonResponse {
+        $currentProgress = MassScanProgress::getCurrent();
+
+        if (is_array($currentProgress) && ($currentProgress['status'] ?? 'running') === 'running') {
+            $currentRunId = (string) ($currentProgress['run_id'] ?? '');
+
+            return $this->scanAllResponse(
+                request: $request,
+                started: false,
+                status: 'already_running',
+                message: 'Ya hay una actualización en curso. Puedes seguirla en la página de progreso.',
+                progress: $currentProgress,
+                runId: $currentRunId !== '' ? $currentRunId : null,
+                redirectUrl: $currentRunId !== '' ? route('monitoring.scans.show', ['runId' => $currentRunId]) : null,
+            );
+        }
+
+        if (! Cache::add('monitoring:manual-scan:cooldown', now()->timestamp, 10)) {
+            return $this->scanAllResponse(
+                request: $request,
+                started: false,
+                status: 'cooldown',
+                message: 'Ya hay una actualización en proceso de arranque. Espera unos segundos e intenta de nuevo.',
+                progress: MassScanProgress::getCurrent(),
+            );
+        }
+
+        if ($siteIds === []) {
+            return $this->scanAllResponse(
+                request: $request,
+                started: false,
+                status: 'no_sites',
+                message: 'No hay sitios disponibles para ejecutar este escaneo.',
+                progress: null,
+            );
+        }
+
+        if ($enforceMassInterval) {
+            $minIntervalMinutes = max(5, (int) Setting::get('monitoring.mass_scan_min_interval_minutes', 15));
+
+            $lastRun = MonitoringMassScanRun::query()
+                ->where('trigger_mode', 'manual')
+                ->orderByDesc('started_at')
+                ->first();
+
+            if ($lastRun instanceof MonitoringMassScanRun && $lastRun->started_at !== null) {
+                $nextAllowedAt = $lastRun->started_at->addMinutes($minIntervalMinutes);
+
+                if ($nextAllowedAt->isFuture()) {
+                    return $this->scanAllResponse(
+                        request: $request,
+                        started: false,
+                        status: 'throttled',
+                        message: sprintf(
+                            'Escaneo masivo bloqueado por protección operativa. Intenta de nuevo en %d minuto(s).',
+                            now()->diffInMinutes($nextAllowedAt),
+                        ),
+                        progress: null,
+                    );
+                }
+            }
+        }
+
+        $progress = MassScanProgress::start(
+            totalSites: count($siteIds),
+            initiatedByUserId: $request->user()?->id,
+            triggerMode: $triggerMode,
+            siteIds: $siteIds,
+        );
+
+        $runId = (string) ($progress['run_id'] ?? '');
+
+        if ($runId === '') {
+            return $this->scanAllResponse(
+                request: $request,
+                started: false,
+                status: 'failed_to_start',
+                message: 'No fue posible iniciar el escaneo solicitado.',
+                progress: null,
+            );
+        }
+
+        if (in_array($triggerMode, ['manual_selected', 'manual_single'], true)) {
+            DispatchMassScanRunJob::dispatchSync($runId, $siteIds);
+        } else {
+            DispatchMassScanRunJob::dispatch($runId, $siteIds);
+        }
+
+        return $this->scanAllResponse(
+            request: $request,
+            started: true,
+            status: 'started',
+            message: $successMessage,
+            progress: MassScanProgress::get($runId),
+            runId: $runId,
+            redirectUrl: route('monitoring.scans.show', ['runId' => $runId]),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function resolveRunProgress(string $runId): ?array
+    {
+        $fromCache = MassScanProgress::get($runId);
+
+        if (is_array($fromCache)) {
+            return $fromCache;
+        }
+
+        if (! Schema::hasTable('monitoring_mass_scan_runs')) {
+            return null;
+        }
+
+        $run = MonitoringMassScanRun::query()->where('run_id', $runId)->first();
+
+        if (! $run instanceof MonitoringMassScanRun) {
+            return null;
+        }
+
+        $totalSites = max(0, (int) $run->total_sites);
+        $totalTasks = max(0, (int) $run->total_tasks);
+        $completedTasks = max(0, (int) $run->completed_tasks);
+        $failedTasks = max(0, (int) $run->failed_tasks);
+        $remainingTasks = max(0, $totalTasks - $completedTasks);
+        $progressPct = $totalTasks > 0 ? min(100.0, round(($completedTasks / $totalTasks) * 100, 2)) : 100.0;
+
+        return [
+            'run_id' => $run->run_id,
+            'status' => $run->status,
+            'started_at' => optional($run->started_at)?->toIso8601String() ?? now()->toIso8601String(),
+            'last_progress_at' => optional($run->last_progress_at)?->toIso8601String(),
+            'completed_at' => optional($run->completed_at)?->toIso8601String(),
+            'total_sites' => $totalSites,
+            'total_tasks' => $totalTasks,
+            'completed_tasks' => $completedTasks,
+            'failed_tasks' => $failedTasks,
+            'remaining_tasks' => $remainingTasks,
+            'progress_pct' => $progressPct,
+            'stages' => [
+                'inspection' => [
+                    'completed' => 0,
+                    'failed' => 0,
+                    'total' => $totalSites,
+                    'remaining' => $totalSites,
+                    'progress_pct' => 0,
+                ],
+            ],
+        ];
+    }
+
+    /**
      * @return array<string, int>
      */
     /**
@@ -731,85 +787,82 @@ final class DashboardController extends Controller
      */
     private function pipelineMetrics(): array
     {
-        $summary = $this->siteCheckRepository->summarizeWindow(1);
+        return Cache::remember('monitoring:dashboard:pipeline-metrics', self::DASHBOARD_CACHE_TTL_SECONDS, function (): array {
+            $summary = $this->siteCheckRepository->summarizeWindow(1);
 
-        $totalChecksLastHour = max(0, (int) ($summary['total_checks'] ?? 0));
-        $downChecksLastHour = max(0, (int) ($summary['down_checks'] ?? 0));
-        $avgLatencyMsLastHour = $totalChecksLastHour > 0 && isset($summary['avg_latency_ms']) && $summary['avg_latency_ms'] !== null
-            ? round((float) $summary['avg_latency_ms'], 2)
-            : 0.0;
+            $totalChecksLastHour = max(0, (int) ($summary['total_checks'] ?? 0));
+            $downChecksLastHour = max(0, (int) ($summary['down_checks'] ?? 0));
+            $avgLatencyMsLastHour = $totalChecksLastHour > 0 && isset($summary['avg_latency_ms']) && $summary['avg_latency_ms'] !== null
+                ? round((float) $summary['avg_latency_ms'], 2)
+                : 0.0;
 
-        $queueDepth = [
-            'monitoring-uptime' => 0,
-            'monitoring-ssl' => 0,
-            'monitoring-tech' => 0,
-            'monitoring-headers' => 0,
-            'monitoring-alerts' => 0,
-        ];
+            $queueDepth = [
+                'monitoring-uptime' => 0,
+                'monitoring-ssl' => 0,
+                'monitoring-tech' => 0,
+                'monitoring-headers' => 0,
+                'monitoring-alerts' => 0,
+            ];
 
-        foreach (array_keys($queueDepth) as $queueName) {
-            try {
-                $queueDepth[$queueName] = max(0, (int) Redis::llen('queues:' . $queueName));
-            } catch (\Throwable) {
-                $queueDepth[$queueName] = 0;
+            foreach (array_keys($queueDepth) as $queueName) {
+                try {
+                    $queueDepth[$queueName] = max(0, (int) Redis::llen('queues:'.$queueName));
+                } catch (\Throwable) {
+                    $queueDepth[$queueName] = 0;
+                }
             }
-        }
 
-        return [
-            'window' => '1h',
-            'totalChecks' => $totalChecksLastHour,
-            'downChecks' => $downChecksLastHour,
-            'errorRatePct' => $totalChecksLastHour > 0 ? round(($downChecksLastHour / $totalChecksLastHour) * 100, 2) : 0.0,
-            'avgLatencyMs' => $avgLatencyMsLastHour,
-            'queueDepth' => $queueDepth,
-        ];
+            return [
+                'window' => '1h',
+                'totalChecks' => $totalChecksLastHour,
+                'downChecks' => $downChecksLastHour,
+                'errorRatePct' => $totalChecksLastHour > 0 ? round(($downChecksLastHour / $totalChecksLastHour) * 100, 2) : 0.0,
+                'avgLatencyMs' => $avgLatencyMsLastHour,
+                'queueDepth' => $queueDepth,
+            ];
+        });
     }
 
     private function mapSitesForDashboard(LengthAwarePaginator $sites): LengthAwarePaginator
     {
         $sites->setCollection(
             $sites->getCollection()->map(function (Site $site): array {
-                $latestCheck = $site->latestCheck;
-                $status = strtolower((string) ($site->current_status ?? 'unknown'));
-                $diagnosis = $this->resolveSiteDiagnosis($site, $status, $latestCheck);
-                $displayStatus = $this->resolveDashboardStatus($site, $status, $latestCheck);
-                $technology = $this->resolveTechnologyInfo($site);
-                $certificate = $site->sslCertificate;
-                $certificatePayload = null;
-
-                if ($certificate !== null) {
-                    $validUntil = $certificate->valid_until;
-                    $normalizedDaysRemaining = $validUntil !== null
-                        ? (int) now()->diffInDays($validUntil, false)
-                        : $certificate->days_remaining;
-
-                    $certificatePayload = [
-                        'valid_until' => optional($validUntil)?->toIso8601String(),
-                        'issuer' => $certificate->issuer,
-                        'days_remaining' => $normalizedDaysRemaining,
-                        'algorithm' => $certificate->algorithm,
-                        'is_expired' => $normalizedDaysRemaining !== null ? $normalizedDaysRemaining < 0 : $certificate->is_expired,
-                    ];
-                }
+                $snapshot = $this->inspectionSnapshot($site);
 
                 return [
                     'id' => (int) $site->id,
                     'name' => $site->name,
                     'domain' => $site->domain,
                     'url' => $site->url,
+                    'lifecycle_status' => $site->lifecycle_status,
+                    'elimination_ticket' => $site->elimination_ticket,
                     'current_status' => $site->current_status,
-                    'current_status_code' => $status,
-                    'display_status_code' => $displayStatus,
+                    'current_status_code' => $snapshot['current_status_code'],
+                    'display_status_code' => $snapshot['display_status_code'],
                     'last_checked_at' => optional($site->last_checked_at)?->toIso8601String(),
-                    'diagnostic_bucket' => $diagnosis['bucket'],
-                    'diagnostic_label' => $diagnosis['label'],
-                    'diagnostic_reason' => $diagnosis['reason'],
-                    'technology_name' => $technology['name'],
-                    'technology_version' => $technology['version'],
-                    'technology_label' => $technology['label'],
-                    'ssl_certificate' => $certificatePayload,
+                    'scan_interrupted_at' => $snapshot['scan_interrupted_at'],
+                    'diagnostic_bucket' => $snapshot['diagnostic_bucket'],
+                    'diagnostic_label' => $snapshot['diagnostic_label'],
+                    'diagnostic_reason' => $snapshot['diagnostic_reason'],
+                    'technology_name' => $snapshot['technology_name'],
+                    'technology_version' => $snapshot['technology_version'],
+                    'technology_label' => $snapshot['technology_label'],
+                    'technology_category_label' => 'Stack consolidado',
+                    'technology_confidence' => $snapshot['technology_confidence'],
+                    'technology_badge_state' => $snapshot['technology_badge_state'],
+                    'server_signature' => $snapshot['server_signature'],
+                    'runtime_name' => $snapshot['runtime_name'],
+                    'runtime_version' => $snapshot['runtime_version'],
+                    'risk_level' => $snapshot['risk_level'],
+                    'risk_score' => $snapshot['risk_score'],
+                    'http_status' => $snapshot['http_status'],
+                    'https_status' => $snapshot['https_status'],
+                    'response_time_ms' => $snapshot['response_time_ms'],
+                    'security_headers_grade' => $snapshot['security_headers_grade'],
+                    'ssl_certificate' => $snapshot['ssl_certificate'],
+                    'inspection_profile' => $snapshot['inspection_profile'],
                 ];
-            })
+            }),
         );
 
         return $sites;
@@ -820,34 +873,36 @@ final class DashboardController extends Controller
      */
     private function dashboardStatusCounts(?int $groupId = null): array
     {
-        $counts = [
-            'up' => 0,
-            'down' => 0,
-            'degraded' => 0,
-            'unknown' => 0,
-        ];
+        $cacheKey = 'monitoring:dashboard:status-counts:'.($groupId ?? 'all');
 
-        $query = Site::query()
-            ->with('latestCheck');
+        return Cache::remember($cacheKey, self::DASHBOARD_CACHE_TTL_SECONDS, function () use ($groupId): array {
+            $counts = [
+                'up' => 0,
+                'down' => 0,
+                'degraded' => 0,
+                'unknown' => 0,
+            ];
 
-        if ($groupId !== null) {
-            $query->where('site_group_id', $groupId);
-        }
+            $query = Site::query();
 
-        foreach ($query->get() as $site) {
-            $status = strtolower((string) ($site->current_status ?? 'unknown'));
-            $resolvedStatus = $this->resolveDashboardStatus($site, $status, $site->latestCheck);
-
-            if (! array_key_exists($resolvedStatus, $counts)) {
-                $counts['unknown']++;
-
-                continue;
+            if ($groupId !== null) {
+                $query->where('site_group_id', $groupId);
             }
 
-            $counts[$resolvedStatus]++;
-        }
+            foreach ($query->get(['current_status']) as $site) {
+                $status = strtolower((string) ($site->current_status ?? 'unknown'));
 
-        return $counts;
+                if (! array_key_exists($status, $counts)) {
+                    $counts['unknown']++;
+
+                    continue;
+                }
+
+                $counts[$status]++;
+            }
+
+            return $counts;
+        });
     }
 
     private function resolveDashboardStatus(Site $site, string $status, ?SiteCheck $latestCheck): string
@@ -908,7 +963,7 @@ final class DashboardController extends Controller
                 'label' => 'No responde',
                 'reason' => $errorMessage !== ''
                     ? $errorMessage
-                    : ($httpCode !== null ? 'El servidor devolvio HTTP ' . $httpCode . '.' : 'No se obtuvo respuesta valida del sitio.'),
+                    : ($httpCode !== null ? 'El servidor devolvio HTTP '.$httpCode.'.' : 'No se obtuvo respuesta valida del sitio.'),
             ];
         }
 
@@ -925,7 +980,7 @@ final class DashboardController extends Controller
                 return [
                     'bucket' => 'responde_con_errores',
                     'label' => 'Responde con errores',
-                    'reason' => 'Responde, pero devolvio HTTP ' . $httpCode . '.',
+                    'reason' => 'Responde, pero devolvio HTTP '.$httpCode.'.',
                 ];
             }
 
@@ -933,7 +988,7 @@ final class DashboardController extends Controller
                 return [
                     'bucket' => 'respuesta_lenta',
                     'label' => 'Respuesta lenta',
-                    'reason' => 'Tiempo de respuesta elevado (' . $responseTimeMs . ' ms).',
+                    'reason' => 'Tiempo de respuesta elevado ('.$responseTimeMs.' ms).',
                 ];
             }
 
@@ -958,37 +1013,241 @@ final class DashboardController extends Controller
      */
     private function diagnosticBreakdown(): array
     {
-        $result = [
-            'operativo' => 0,
-            'respuesta_lenta' => 0,
-            'responde_con_errores' => 0,
-            'inestable' => 0,
-            'no_responde' => 0,
-            'sin_actualizar' => 0,
-        ];
+        return Cache::remember('monitoring:dashboard:diagnostic-breakdown', self::DASHBOARD_CACHE_TTL_SECONDS, function (): array {
+            $result = [
+                'operativo' => 0,
+                'respuesta_lenta' => 0,
+                'responde_con_errores' => 0,
+                'inestable' => 0,
+                'no_responde' => 0,
+                'sin_actualizar' => 0,
+            ];
 
-        $sites = Site::query()
-            ->with('latestCheck')
-            ->get();
+            $sites = Site::query()
+                ->with('inspectionProfile')
+                ->get();
 
-        foreach ($sites as $site) {
-            $status = strtolower((string) ($site->current_status ?? 'unknown'));
-            $diagnosis = $this->resolveSiteDiagnosis($site, $status, $site->latestCheck);
-            $bucket = (string) ($diagnosis['bucket'] ?? 'sin_actualizar');
+            foreach ($sites as $site) {
+                $snapshot = $this->inspectionSnapshot($site);
+                $bucket = (string) ($snapshot['diagnostic_bucket'] ?? 'sin_actualizar');
 
-            if (! array_key_exists($bucket, $result)) {
-                $result['sin_actualizar']++;
-                continue;
+                if (! array_key_exists($bucket, $result)) {
+                    $result['sin_actualizar']++;
+                    continue;
+                }
+
+                $result[$bucket]++;
             }
 
-            $result[$bucket]++;
-        }
-
-        return $result;
+            return $result;
+        });
     }
 
     /**
-     * @param array<int, int> $siteIds
+     * @return array<string, mixed>
+     */
+    private function inspectionSnapshot(Site $site): array
+    {
+        $profile = $site->inspectionProfile;
+        $status = strtolower((string) ($site->current_status ?? 'unknown'));
+
+        $httpStatus = is_int($profile?->http_status) ? $profile->http_status : null;
+        $httpsStatus = is_int($profile?->https_status) ? $profile->https_status : null;
+        $responseTime = is_int($profile?->response_time_ms) ? $profile->response_time_ms : null;
+        $riskLevel = (string) ($profile?->risk_level ?? 'No determinado');
+
+        $analysisErrors = is_array($profile?->analysis_errors)
+            ? array_values(array_filter(array_map(static fn (mixed $value): string => trim((string) $value), $profile->analysis_errors), static fn (string $value): bool => $value !== ''))
+            : [];
+
+        $diagnosticBucket = 'sin_actualizar';
+        $diagnosticLabel = 'Sin actualizar';
+        $diagnosticReason = $analysisErrors[0] ?? 'Sin inspección consolidada disponible.';
+
+        if ($status === 'up') {
+            $diagnosticBucket = 'operativo';
+            $diagnosticLabel = 'Operativo';
+            $diagnosticReason = 'Inspección consolidada completada sin hallazgos críticos.';
+        } elseif ($status === 'down') {
+            $diagnosticBucket = 'no_responde';
+            $diagnosticLabel = 'No responde';
+            $diagnosticReason = $analysisErrors[0] ?? 'El sitio no respondió en la inspección consolidada.';
+        } elseif ($status === 'degraded') {
+            if ((is_int($httpStatus) && $httpStatus >= 400) || (is_int($httpsStatus) && $httpsStatus >= 400)) {
+                $diagnosticBucket = 'responde_con_errores';
+                $diagnosticLabel = 'Responde con errores';
+                $diagnosticReason = sprintf(
+                    'HTTP %s / HTTPS %s durante la inspección consolidada.',
+                    $httpStatus !== null ? (string) $httpStatus : 'N/D',
+                    $httpsStatus !== null ? (string) $httpsStatus : 'N/D',
+                );
+            } elseif (is_int($responseTime) && $responseTime >= 1500) {
+                $diagnosticBucket = 'respuesta_lenta';
+                $diagnosticLabel = 'Respuesta lenta';
+                $diagnosticReason = 'Tiempo de respuesta alto en la inspección consolidada ('.$responseTime.' ms).';
+            } else {
+                $diagnosticBucket = 'inestable';
+                $diagnosticLabel = 'Inestable';
+                $diagnosticReason = $analysisErrors[0] ?? 'Inspección consolidada con hallazgos parciales.';
+            }
+        }
+
+        $sslPayload = is_array($profile?->ssl_payload) ? $profile->ssl_payload : [];
+        $sslDays = isset($sslPayload['expires_in_days']) && is_numeric($sslPayload['expires_in_days'])
+            ? (int) $sslPayload['expires_in_days']
+            : null;
+        $sslValidUntilRaw = isset($sslPayload['expires_at']) ? trim((string) $sslPayload['expires_at']) : '';
+        $sslValidUntil = null;
+
+        if ($sslValidUntilRaw !== '') {
+            try {
+                $sslValidUntil = Carbon::parse($sslValidUntilRaw);
+            } catch (\Throwable) {
+                $sslValidUntil = null;
+            }
+        }
+
+        if ($sslDays === null && $sslValidUntil instanceof Carbon) {
+            $sslDays = (int) now()->diffInDays($sslValidUntil, false);
+        }
+
+        $sslExpired = $sslDays !== null ? $sslDays < 0 : ($sslValidUntil instanceof Carbon && $sslValidUntil->isPast());
+
+        $sslCertificate = [
+            'valid_until' => $sslValidUntilRaw !== '' ? $sslValidUntilRaw : null,
+            'issuer' => isset($sslPayload['issuer']) ? (string) $sslPayload['issuer'] : null,
+            'days_remaining' => $sslDays,
+            'algorithm' => isset($sslPayload['algorithm']) ? (string) $sslPayload['algorithm'] : null,
+            'is_expired' => $sslExpired,
+        ];
+
+        $certificateLabel = 'Sin certificado';
+        $hasSslTelemetry = $sslCertificate['valid_until'] !== null
+            || (($sslCertificate['issuer'] ?? null) !== null && trim((string) $sslCertificate['issuer']) !== '')
+            || (($sslCertificate['algorithm'] ?? null) !== null && trim((string) $sslCertificate['algorithm']) !== '')
+            || $sslDays !== null;
+
+        if ($sslExpired) {
+            $certificateLabel = 'Expirado';
+        } elseif (in_array($status, ['down', 'unknown'], true) && $hasSslTelemetry) {
+            $certificateLabel = 'No verificable';
+        } elseif (($sslPayload['valid'] ?? false) === true) {
+            if ($sslDays !== null && $sslDays <= 30) {
+                $certificateLabel = 'Vence en '.$sslDays.' días';
+            } else {
+                $certificateLabel = 'Vigente';
+            }
+        }
+
+        $technologyInfo = $this->resolveTechnologyInfo($site);
+        $cmsName = trim((string) ($profile?->cms_name ?? 'No determinado'));
+        $cmsVersion = trim((string) ($profile?->cms_version ?? 'No determinado'));
+        $runtimeName = trim((string) ($profile?->runtime_name ?? 'No determinado'));
+        $runtimeVersion = trim((string) ($profile?->runtime_version ?? 'No determinado'));
+
+        $frameworks = is_array($profile?->js_frameworks)
+            ? array_values(array_filter(array_map(static fn (mixed $value): string => trim((string) $value), $profile->js_frameworks), static fn (string $value): bool => $value !== ''))
+            : [];
+
+        $technologyPieces = [];
+
+        if ($cmsName !== '' && mb_strtolower($cmsName) !== 'no determinado') {
+            $technologyPieces[] = $cmsVersion !== '' && mb_strtolower($cmsVersion) !== 'no determinado'
+                ? $cmsName.' '.$cmsVersion
+                : $cmsName;
+        }
+
+        if ($runtimeName !== '' && mb_strtolower($runtimeName) !== 'no determinado') {
+            $technologyPieces[] = $runtimeVersion !== '' && mb_strtolower($runtimeVersion) !== 'no determinado'
+                ? $runtimeName.' '.$runtimeVersion
+                : $runtimeName;
+        }
+
+        if ($frameworks !== []) {
+            $technologyPieces[] = implode(', ', $frameworks);
+        }
+
+        $technologyLabel = trim((string) ($technologyInfo['label'] ?? ''));
+
+        if ($technologyLabel === '' || mb_strtolower($technologyLabel) === 'no identificada') {
+            $technologyLabel = $technologyPieces !== [] ? implode(' · ', $technologyPieces) : 'No identificada';
+        } elseif ($runtimeName !== '' && mb_strtolower($runtimeName) !== 'no determinado') {
+            $runtimeLabel = $runtimeVersion !== '' && mb_strtolower($runtimeVersion) !== 'no determinado'
+                ? $runtimeName.' '.$runtimeVersion
+                : $runtimeName;
+
+            if (! str_contains($technologyLabel, $runtimeLabel)) {
+                $technologyLabel .= ' · '.$runtimeLabel;
+            }
+        }
+
+        if ($frameworks !== []) {
+            $frameworksLabel = implode(', ', $frameworks);
+
+            if (! str_contains($technologyLabel, $frameworksLabel)) {
+                $technologyLabel .= ' · '.$frameworksLabel;
+            }
+        }
+
+        $securityHeadersPayload = is_array($profile?->security_headers_payload)
+            ? $profile->security_headers_payload
+            : [];
+        $securityHeadersGradeRaw = trim((string) ($securityHeadersPayload['grade'] ?? $securityHeadersPayload['score'] ?? ''));
+        $securityHeadersGrade = $securityHeadersGradeRaw !== '' ? mb_strtoupper($securityHeadersGradeRaw) : null;
+
+        return [
+            'current_status_code' => $status,
+            'display_status_code' => in_array($status, ['up', 'down', 'degraded', 'unknown'], true) ? $status : 'unknown',
+            'diagnostic_bucket' => $diagnosticBucket,
+            'diagnostic_label' => $diagnosticLabel,
+            'diagnostic_reason' => $diagnosticReason,
+            'technology_name' => (string) ($technologyInfo['name'] ?? ($cmsName !== '' ? $cmsName : 'No identificado')),
+            'technology_version' => ($technologyInfo['version'] ?? null) ?: ($cmsVersion !== '' && mb_strtolower($cmsVersion) !== 'no determinado' ? $cmsVersion : null),
+            'technology_label' => $technologyLabel,
+            'technology_confidence' => (int) ($technologyInfo['confidence'] ?? (is_string($profile?->cms_confidence)
+                ? (mb_strtolower($profile->cms_confidence) === 'high' ? 90 : (mb_strtolower($profile->cms_confidence) === 'medium' ? 70 : 40))
+                : 0)),
+            'technology_badge_state' => (string) ($technologyInfo['badge_state'] ?? ($cmsName !== '' && mb_strtolower($cmsName) !== 'no determinado' ? 'success' : 'danger')),
+            'server_signature' => (string) ($profile?->server_signature ?? 'No determinado'),
+            'runtime_name' => $runtimeName,
+            'runtime_version' => $runtimeVersion,
+            'ssl_certificate' => $sslCertificate,
+            'certificate_label' => $certificateLabel,
+            'http_status' => $httpStatus,
+            'https_status' => $httpsStatus,
+            'response_time_ms' => $responseTime,
+            'risk_level' => $riskLevel,
+            'risk_score' => $profile?->risk_score,
+            'security_headers_grade' => $securityHeadersGrade,
+            // La tecnologia/status de arriba ya reflejan el ultimo dato conocido
+            // tal cual (nunca se pisan al cancelar), esta bandera solo avisa que
+            // ESTA corrida en particular no alcanzo a re-inspeccionar el sitio.
+            'scan_interrupted_at' => optional($profile?->scan_interrupted_at)?->toIso8601String(),
+            'inspection_profile' => [
+                'inspected_at' => optional($profile?->inspected_at)?->toIso8601String(),
+                'dns_status' => (string) ($profile?->dns_status ?? 'pending'),
+                'dns_records' => is_array($profile?->dns_records) ? $profile->dns_records : [],
+                'http_status' => $httpStatus,
+                'https_status' => $httpsStatus,
+                'response_time_ms' => $responseTime,
+                'ssl' => $sslPayload,
+                'security_headers' => $securityHeadersPayload,
+                'fingerprint' => is_array($profile?->fingerprint_payload) ? $profile->fingerprint_payload : [],
+                'cms_name' => $cmsName,
+                'cms_version' => $cmsVersion,
+                'runtime_name' => $runtimeName,
+                'runtime_version' => $runtimeVersion,
+                'server_signature' => (string) ($profile?->server_signature ?? 'No determinado'),
+                'frameworks' => $frameworks,
+                'risk_score' => $profile?->risk_score,
+                'risk_level' => $riskLevel,
+                'analysis_errors' => $analysisErrors,
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<int, int>  $siteIds
      */
     private function dispatchMassiveScan(array $siteIds, string $runId): void
     {
@@ -1020,9 +1279,9 @@ final class DashboardController extends Controller
     }
 
     /**
-     * @param \Illuminate\Support\Collection<int, array<string, mixed>> $rows
+     * @param  Collection<int, array<string, mixed>>  $rows
      */
-    private function paginateCollection(\Illuminate\Support\Collection $rows, int $page, int $perPage, Request $request): LengthAwarePaginator
+    private function paginateCollection(Collection $rows, int $page, int $perPage, Request $request): LengthAwarePaginator
     {
         $total = $rows->count();
         $items = $rows->forPage($page, $perPage)->values();
@@ -1035,7 +1294,7 @@ final class DashboardController extends Controller
             options: [
                 'path' => $request->url(),
                 'query' => $request->query(),
-            ]
+            ],
         );
     }
 
@@ -1044,21 +1303,23 @@ final class DashboardController extends Controller
      */
     private function searchSuggestions(): array
     {
-        $sites = Site::query()
-            ->orderByRaw('LOWER(name)')
-            ->limit(350)
-            ->get(['name', 'domain']);
+        return Cache::remember('monitoring:dashboard:search-suggestions', self::DASHBOARD_CACHE_TTL_SECONDS, function (): array {
+            $sites = Site::query()
+                ->orderByRaw('LOWER(name)')
+                ->limit(350)
+                ->get(['name', 'domain']);
 
-        return $sites
-            ->flatMap(static function (Site $site): array {
-                return array_values(array_filter([
-                    trim((string) $site->name),
-                    trim((string) $site->domain),
-                ], static fn (string $value): bool => $value !== ''));
-            })
-            ->unique()
-            ->values()
-            ->all();
+            return $sites
+                ->flatMap(static function (Site $site): array {
+                    return array_values(array_filter([
+                        trim((string) $site->name),
+                        trim((string) $site->domain),
+                    ], static fn (string $value): bool => $value !== ''));
+                })
+                ->unique()
+                ->values()
+                ->all();
+        });
     }
 
     private function scheduledScansEnabled(): bool
@@ -1071,7 +1332,7 @@ final class DashboardController extends Controller
      */
     private function massScanHistory(): array
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('monitoring_mass_scan_runs')) {
+        if (! Schema::hasTable('monitoring_mass_scan_runs')) {
             return [];
         }
 
@@ -1100,76 +1361,192 @@ final class DashboardController extends Controller
     }
 
     /**
+     * Prioridad conceptual de la tecnologia "principal" a mostrar, independiente de
+     * la fuente que la aporto. Un CMS real siempre le gana a un framework, que le
+     * gana a un runtime/lenguaje, que le gana a "sitio estatico", que le gana a
+     * infraestructura/servidor web (nginx/Apache/IIS son la plataforma que aloja el
+     * sitio, no "la tecnologia" del sitio). "unknown"/categorias no reconocidas
+     * quedan en el nivel mas bajo: nunca deben tapar evidencia real de un nivel
+     * superior solo por tener mayor confidence_pct.
+     *
      * @return array<string, mixed>
      */
     private function resolveTechnologyInfo(Site $site): array
     {
-        $technology = $site->siteTechnologies
-            ->sortByDesc(static fn (SiteTechnology $item): int => (int) ($item->is_primary ? 1000 : 0) + ((int) $item->confidence_pct))
-            ->first();
+        $candidates = [];
 
-        if ($technology instanceof SiteTechnology && $technology->technology !== null) {
-            $detectedTechnology = DetectedTechnology::fromArray([
-                'name' => $technology->technology->name,
-                'version' => $technology->version,
-                'category' => $technology->technology->category ?? 'other',
-                'confidence' => $technology->confidence_pct,
-                'vendor' => $technology->technology->vendor,
-                'slug' => $technology->technology->slug,
+        foreach ($this->collectLegacyPivotCandidates($site) as $candidate) {
+            $candidates[] = $candidate;
+        }
+
+        $cmsDetailCandidate = $this->collectCmsDetailCandidate($site);
+
+        if ($cmsDetailCandidate !== null) {
+            $candidates[] = $cmsDetailCandidate;
+        }
+
+        $fingerprintCandidate = $this->collectFingerprintCandidate($site);
+
+        if ($fingerprintCandidate !== null) {
+            $candidates[] = $fingerprintCandidate;
+        }
+
+        if ($candidates === []) {
+            return [
+                'name' => 'No identificada',
+                'version' => null,
+                'label' => 'No identificada',
+                'category' => 'other',
+                'category_label' => 'Otro',
+                'confidence' => 0,
+                'badge_state' => 'danger',
+            ];
+        }
+
+        usort(
+            $candidates,
+            static fn (array $left, array $right): int => $left['tier'] <=> $right['tier']
+                ?: $right['confidence'] <=> $left['confidence'],
+        );
+
+        return $candidates[0]['result'];
+    }
+
+    private function technologyCategoryTier(string $category): int
+    {
+        return match (mb_strtolower(trim($category))) {
+            'cms' => 1,
+            'framework', 'frontend' => 2,
+            'language', 'runtime' => 3,
+            'static' => 4,
+            'web-server', 'server', 'infra', 'infrastructure' => 5,
+            default => 6,
+        };
+    }
+
+    /**
+     * El catalogo legacy (site_technologies) fue poblado por un job ya discontinuado
+     * que, cuando no encontraba un CMS decisivo, escribia una fila "pseudo-tecnologia"
+     * literal (slug "no-determinado", is_primary=true) en vez de dejar el sitio sin
+     * fila. Esa fila no es evidencia de nada -es un marcador de "no se supo"- y debe
+     * excluirse por completo de la seleccion, igual que las categorias puramente
+     * secundarias (base de datos, tema, modulo) que nunca representan "la tecnologia"
+     * principal de un sitio.
+     *
+     * @return array<int, array{tier: int, confidence: int, result: array<string, mixed>}>
+     */
+    private function collectLegacyPivotCandidates(Site $site): array
+    {
+        $ignoredCategories = ['database', 'theme', 'module'];
+        $candidates = [];
+
+        foreach ($site->siteTechnologies as $item) {
+            if (! $item instanceof SiteTechnology || $item->technology === null) {
+                continue;
+            }
+
+            $slug = mb_strtolower(trim((string) ($item->technology->slug ?? '')));
+            $name = mb_strtolower(trim((string) ($item->technology->name ?? '')));
+
+            if ($slug === 'no-determinado' || $name === 'no determinado' || $name === '') {
+                continue;
+            }
+
+            $category = (string) ($item->technology->category ?? 'other');
+
+            if (in_array(mb_strtolower(trim($category)), $ignoredCategories, true)) {
+                continue;
+            }
+
+            $detected = DetectedTechnology::fromArray([
+                'name' => $item->technology->name,
+                'version' => $item->version,
+                'category' => $category,
+                'confidence' => $item->confidence_pct,
+                'vendor' => $item->technology->vendor,
+                'slug' => $item->technology->slug,
             ])->toFrontendArray();
 
-            if (
-                mb_strtolower((string) ($technology->technology->slug ?? '')) === 'drupal'
-                && trim((string) ($detectedTechnology['version'] ?? '')) === ''
-            ) {
-                $detectedTechnology = DetectedTechnology::fromArray([
+            if ($slug === 'drupal' && trim((string) ($detected['version'] ?? '')) === '') {
+                $detected = DetectedTechnology::fromArray([
                     'name' => 'Drupal',
                     'version' => 'Sin versión detectable',
                     'category' => 'cms',
-                    'confidence' => $technology->confidence_pct,
-                    'vendor' => $technology->technology->vendor,
+                    'confidence' => $item->confidence_pct,
+                    'vendor' => $item->technology->vendor,
                     'slug' => 'drupal',
                     'evidence' => ['site-technology-null-version'],
                 ])->toFrontendArray();
             }
 
-            if ($detectedTechnology['name'] !== '') {
-                return [
-                    'name' => $detectedTechnology['name'],
-                    'version' => $detectedTechnology['version'],
-                    'label' => $detectedTechnology['display_name'],
-                    'category' => $detectedTechnology['category'],
-                    'category_label' => $detectedTechnology['category_label'],
-                    'confidence' => $detectedTechnology['confidence'],
-                    'badge_state' => $detectedTechnology['badge_state'],
-                ];
+            if ($detected['name'] === '') {
+                continue;
             }
+
+            $candidates[] = [
+                'tier' => $this->technologyCategoryTier($detected['category']),
+                'confidence' => (int) $detected['confidence'],
+                'result' => [
+                    'name' => $detected['name'],
+                    'version' => $detected['version'],
+                    'label' => $detected['display_name'],
+                    'category' => $detected['category'],
+                    'category_label' => $detected['category_label'],
+                    'confidence' => $detected['confidence'],
+                    'badge_state' => $detected['badge_state'],
+                ],
+            ];
         }
 
+        return $candidates;
+    }
+
+    /**
+     * @return array{tier: int, confidence: int, result: array<string, mixed>}|null
+     */
+    private function collectCmsDetailCandidate(Site $site): ?array
+    {
         $cmsType = trim((string) ($site->cmsDetail?->cms_type ?? ''));
         $cmsVersion = trim((string) ($site->cmsDetail?->cms_version ?? ''));
         $cmsLabel = trim((string) ($site->cmsDetail?->theme_name ?? ''));
 
-        if ($cmsType !== '') {
-            $normalized = match (strtolower($cmsType)) {
-                'drupal' => 'Drupal',
-                'laravel' => 'Laravel',
-                'wordpress' => 'WordPress',
-                'wix' => 'Wix',
-                default => ucfirst($cmsType),
-            };
+        // El job legacy (ya discontinuado) escribia "inactive"/"unconfigured"
+        // en cms_type como marcador de ESTADO ("este dominio no responde" /
+        // "es la pagina de vhost sin configurar de UDG"), nunca como nombre
+        // de CMS -su propio codigo los guarda con category:'status', no
+        // category:'cms'-. Sin esta exclusion, ucfirst() los convertia en
+        // "Inactive"/"Unconfigured" y ganaban tier 1 (cms) por encima de la
+        // deteccion real y fresca que el motor actual ya tenia calculada
+        // (confirmado: 20 sitios mostraban "Unconfigured" en vez de su
+        // fingerprint_payload correcto, p. ej. "HTML/CSS/JavaScript estático").
+        $cmsTypeSentinels = ['unconfigured', 'inactive'];
 
-            if ($normalized === 'Drupal' && $cmsVersion !== '' && preg_match('/^drupal\b/i', $cmsVersion) === 1) {
-                $technology = DetectedTechnology::fromArray([
-                    'name' => 'Drupal',
-                    'version' => null,
-                    'category' => 'cms',
-                    'confidence' => 100,
-                    'slug' => 'drupal',
-                    'evidence' => [$cmsVersion],
-                ])->toFrontendArray();
+        if ($cmsType === '' || in_array(mb_strtolower($cmsType), $cmsTypeSentinels, true)) {
+            return null;
+        }
 
-                return [
+        $normalized = match (strtolower($cmsType)) {
+            'drupal' => 'Drupal',
+            'laravel' => 'Laravel',
+            'wordpress' => 'WordPress',
+            'wix' => 'Wix',
+            default => ucfirst($cmsType),
+        };
+
+        if ($normalized === 'Drupal' && $cmsVersion !== '' && preg_match('/^drupal\b/i', $cmsVersion) === 1) {
+            $technology = DetectedTechnology::fromArray([
+                'name' => 'Drupal',
+                'version' => null,
+                'category' => 'cms',
+                'confidence' => 100,
+                'slug' => 'drupal',
+                'evidence' => [$cmsVersion],
+            ])->toFrontendArray();
+
+            return [
+                'tier' => 1,
+                'confidence' => (int) $technology['confidence'],
+                'result' => [
                     'name' => $technology['name'],
                     'version' => null,
                     'label' => $cmsVersion,
@@ -1177,20 +1554,24 @@ final class DashboardController extends Controller
                     'category_label' => $technology['category_label'],
                     'confidence' => $technology['confidence'],
                     'badge_state' => $technology['badge_state'],
-                ];
-            }
+                ],
+            ];
+        }
 
-            if ($normalized === 'Drupal' && $cmsVersion === '' && $cmsLabel !== '' && preg_match('/^drupal\b/i', $cmsLabel) === 1) {
-                $technology = DetectedTechnology::fromArray([
-                    'name' => 'Drupal',
-                    'version' => null,
-                    'category' => 'cms',
-                    'confidence' => 100,
-                    'slug' => 'drupal',
-                    'evidence' => [$cmsLabel],
-                ])->toFrontendArray();
+        if ($normalized === 'Drupal' && $cmsVersion === '' && $cmsLabel !== '' && preg_match('/^drupal\b/i', $cmsLabel) === 1) {
+            $technology = DetectedTechnology::fromArray([
+                'name' => 'Drupal',
+                'version' => null,
+                'category' => 'cms',
+                'confidence' => 100,
+                'slug' => 'drupal',
+                'evidence' => [$cmsLabel],
+            ])->toFrontendArray();
 
-                return [
+            return [
+                'tier' => 1,
+                'confidence' => (int) $technology['confidence'],
+                'result' => [
                     'name' => $technology['name'],
                     'version' => null,
                     'label' => $cmsLabel,
@@ -1198,20 +1579,24 @@ final class DashboardController extends Controller
                     'category_label' => $technology['category_label'],
                     'confidence' => $technology['confidence'],
                     'badge_state' => $technology['badge_state'],
-                ];
-            }
+                ],
+            ];
+        }
 
-            if ($normalized === 'Drupal' && $cmsVersion === '') {
-                $technology = DetectedTechnology::fromArray([
-                    'name' => 'Drupal',
-                    'version' => 'Sin versión detectable',
-                    'category' => 'cms',
-                    'confidence' => 78,
-                    'slug' => 'drupal',
-                    'evidence' => ['cms-detail-fallback'],
-                ])->toFrontendArray();
+        if ($normalized === 'Drupal' && $cmsVersion === '') {
+            $technology = DetectedTechnology::fromArray([
+                'name' => 'Drupal',
+                'version' => 'Sin versión detectable',
+                'category' => 'cms',
+                'confidence' => 78,
+                'slug' => 'drupal',
+                'evidence' => ['cms-detail-fallback'],
+            ])->toFrontendArray();
 
-                return [
+            return [
+                'tier' => 1,
+                'confidence' => (int) $technology['confidence'],
+                'result' => [
                     'name' => $technology['name'],
                     'version' => $technology['version'],
                     'label' => $technology['display_name'],
@@ -1219,18 +1604,22 @@ final class DashboardController extends Controller
                     'category_label' => $technology['category_label'],
                     'confidence' => $technology['confidence'],
                     'badge_state' => $technology['badge_state'],
-                ];
-            }
+                ],
+            ];
+        }
 
-            $technology = DetectedTechnology::fromArray([
-                'name' => $normalized,
-                'version' => $cmsVersion !== '' ? $cmsVersion : null,
-                'category' => 'cms',
-                'confidence' => 100,
-                'slug' => strtolower($normalized),
-            ])->toFrontendArray();
+        $technology = DetectedTechnology::fromArray([
+            'name' => $normalized,
+            'version' => $cmsVersion !== '' ? $cmsVersion : null,
+            'category' => 'cms',
+            'confidence' => 100,
+            'slug' => strtolower($normalized),
+        ])->toFrontendArray();
 
-            return [
+        return [
+            'tier' => 1,
+            'confidence' => (int) $technology['confidence'],
+            'result' => [
                 'name' => $technology['name'],
                 'version' => $technology['version'],
                 'label' => $technology['display_name'],
@@ -1238,24 +1627,56 @@ final class DashboardController extends Controller
                 'category_label' => $technology['category_label'],
                 'confidence' => $technology['confidence'],
                 'badge_state' => $technology['badge_state'],
-            ];
-        }
-
-        return [
-            'name' => 'No identificada',
-            'version' => null,
-            'label' => 'No identificada',
-            'category' => 'other',
-            'category_label' => 'Otro',
-            'confidence' => 0,
-            'badge_state' => 'danger',
+            ],
         ];
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     * Ni el catalogo legacy (site_technologies) ni cmsDetail tienen nada valido para
+     * este sitio -habitual en cualquier sitio escaneado solo por el motor actual, que
+     * ya no escribe a esas tablas-. Se usa la cascada de respaldo que el motor ya
+     * calculo (runtime/framework/HTML estatico) y que vive en el perfil de inspeccion
+     * vigente.
+     *
+     * @return array{tier: int, confidence: int, result: array<string, mixed>}|null
      */
-    private function obsoleteTechnologies(int $limit): \Illuminate\Support\Collection
+    private function collectFingerprintCandidate(Site $site): ?array
+    {
+        $fingerprintPayload = is_array($site->inspectionProfile?->fingerprint_payload)
+            ? $site->inspectionProfile->fingerprint_payload
+            : [];
+        $fallbackName = trim((string) ($fingerprintPayload['detected_technology'] ?? ''));
+
+        if ($fallbackName === '' || mb_strtolower($fallbackName) === 'no determinado') {
+            return null;
+        }
+
+        $fallback = DetectedTechnology::fromArray([
+            'name' => $fallbackName,
+            'category' => (string) ($fingerprintPayload['detected_category'] ?? 'other'),
+            'confidence' => $fingerprintPayload['technology_confidence'] ?? 0,
+            'evidence' => $fingerprintPayload['technology_evidence'] ?? [],
+        ])->toFrontendArray();
+
+        return [
+            'tier' => $this->technologyCategoryTier($fallback['category']),
+            'confidence' => (int) $fallback['confidence'],
+            'result' => [
+                'name' => $fallback['name'],
+                'version' => $fallback['version'],
+                'label' => $fallback['display_name'],
+                'category' => $fallback['category'],
+                'category_label' => $fallback['category_label'],
+                'confidence' => $fallback['confidence'],
+                'badge_state' => $fallback['badge_state'],
+            ],
+        ];
+    }
+
+    /**
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function obsoleteTechnologies(int $limit): Collection
     {
         $rows = SiteTechnology::query()
             ->join('technologies', 'technologies.id', '=', 'site_technologies.technology_id')
@@ -1348,5 +1769,4 @@ final class DashboardController extends Controller
     {
         return config('queue.default') === 'sync';
     }
-
 }

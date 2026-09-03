@@ -19,10 +19,9 @@ final class TechnologyStackChanged implements ShouldBroadcastNow
     use SkipsBroadcastWhenUnavailable;
 
     /**
-     * @param int                  $siteId
-     * @param string[]             $added      Tecnologias nuevas detectadas en este snapshot
-     * @param string[]             $removed    Tecnologias que desaparecieron respecto al snapshot anterior
-     * @param array<string, mixed> $snapshot   Snapshot completo de tecnologias actuales
+     * @param  string[]  $added  Tecnologias nuevas detectadas en este snapshot
+     * @param  string[]  $removed  Tecnologias que desaparecieron respecto al snapshot anterior
+     * @param  array<string, mixed>  $snapshot  Snapshot completo de tecnologias actuales
      */
     public function __construct(
         public readonly int $siteId,
@@ -30,8 +29,7 @@ final class TechnologyStackChanged implements ShouldBroadcastNow
         public readonly array $removed,
         public readonly array $snapshot,
         public readonly string $detectedAt,
-    ) {
-    }
+    ) {}
 
     public function broadcastOn(): Channel
     {
@@ -49,10 +47,10 @@ final class TechnologyStackChanged implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return [
-            'siteId'     => $this->siteId,
-            'added'      => $this->added,
-            'removed'    => $this->removed,
-            'snapshot'   => $this->snapshot,
+            'siteId' => $this->siteId,
+            'added' => $this->added,
+            'removed' => $this->removed,
+            'snapshot' => $this->snapshot,
             'detectedAt' => $this->detectedAt,
         ];
     }

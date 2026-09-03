@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -25,9 +26,35 @@ final class SiteEvent extends Model
 
     protected $casts = [
         'occurred_at' => 'immutable_datetime',
-        'created_at'  => 'immutable_datetime',
-        'metadata'    => 'array',
+        'created_at' => 'immutable_datetime',
+        'metadata' => 'array',
     ];
+
+    // -----------------------------------------------------------------
+    // Factory helpers
+    // -----------------------------------------------------------------
+
+    public static function record(
+        int $siteId,
+        string $eventType,
+        string $title,
+        string $severity = 'info',
+        ?string $description = null,
+        array $metadata = [],
+        ?int $createdBy = null,
+        ?DateTimeInterface $occurredAt = null,
+    ): self {
+        return self::create([
+            'site_id' => $siteId,
+            'event_type' => $eventType,
+            'title' => $title,
+            'description' => $description,
+            'severity' => $severity,
+            'metadata' => $metadata,
+            'occurred_at' => $occurredAt ?? now(),
+            'created_by' => $createdBy,
+        ]);
+    }
 
     // -----------------------------------------------------------------
     // Relations
@@ -48,57 +75,29 @@ final class SiteEvent extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<SiteEvent> $query
-     * @param string $type
-     * @return \Illuminate\Database\Eloquent\Builder<SiteEvent>
+     * @param  Builder<SiteEvent>  $query
+     * @return Builder<SiteEvent>
      */
-    public function scopeOfType(\Illuminate\Database\Eloquent\Builder $query, string $type): \Illuminate\Database\Eloquent\Builder
+    public function scopeOfType(Builder $query, string $type): Builder
     {
         return $query->where('event_type', $type);
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<SiteEvent> $query
-     * @return \Illuminate\Database\Eloquent\Builder<SiteEvent>
+     * @param  Builder<SiteEvent>  $query
+     * @return Builder<SiteEvent>
      */
-    public function scopeCritical(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeCritical(Builder $query): Builder
     {
         return $query->where('severity', 'critical');
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<SiteEvent> $query
-     * @param int $days
-     * @return \Illuminate\Database\Eloquent\Builder<SiteEvent>
+     * @param  Builder<SiteEvent>  $query
+     * @return Builder<SiteEvent>
      */
-    public function scopeInLastDays(\Illuminate\Database\Eloquent\Builder $query, int $days): \Illuminate\Database\Eloquent\Builder
+    public function scopeInLastDays(Builder $query, int $days): Builder
     {
         return $query->where('occurred_at', '>=', now()->subDays($days));
-    }
-
-    // -----------------------------------------------------------------
-    // Factory helpers
-    // -----------------------------------------------------------------
-
-    public static function record(
-        int $siteId,
-        string $eventType,
-        string $title,
-        string $severity = 'info',
-        ?string $description = null,
-        array $metadata = [],
-        ?int $createdBy = null,
-        ?DateTimeInterface $occurredAt = null,
-    ): self {
-        return self::create([
-            'site_id'     => $siteId,
-            'event_type'  => $eventType,
-            'title'       => $title,
-            'description' => $description,
-            'severity'    => $severity,
-            'metadata'    => $metadata,
-            'occurred_at' => $occurredAt ?? now(),
-            'created_by'  => $createdBy,
-        ]);
     }
 }

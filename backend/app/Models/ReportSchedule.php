@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -24,11 +25,11 @@ final class ReportSchedule extends Model
     ];
 
     protected $casts = [
-        'scope_id'          => 'integer',
+        'scope_id' => 'integer',
         'delivery_channels' => 'array',
-        'is_active'         => 'boolean',
-        'last_run_at'       => 'immutable_datetime',
-        'next_run_at'       => 'immutable_datetime',
+        'is_active' => 'boolean',
+        'last_run_at' => 'immutable_datetime',
+        'next_run_at' => 'immutable_datetime',
     ];
 
     // -----------------------------------------------------------------
@@ -36,24 +37,24 @@ final class ReportSchedule extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<ReportSchedule> $query
-     * @return \Illuminate\Database\Eloquent\Builder<ReportSchedule>
+     * @param  Builder<ReportSchedule>  $query
+     * @return Builder<ReportSchedule>
      */
-    public function scopeActive(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<ReportSchedule> $query
-     * @return \Illuminate\Database\Eloquent\Builder<ReportSchedule>
+     * @param  Builder<ReportSchedule>  $query
+     * @return Builder<ReportSchedule>
      */
-    public function scopeDue(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeDue(Builder $query): Builder
     {
         return $query->where('is_active', true)
             ->where(function ($q): void {
                 $q->whereNull('next_run_at')
-                  ->orWhere('next_run_at', '<=', now());
+                    ->orWhere('next_run_at', '<=', now());
             });
     }
 }

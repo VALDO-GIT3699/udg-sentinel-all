@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace Modules\Monitoring\Support;
 
 use App\Models\MonitoringMassScanRun;
+use App\Models\Site;
+use App\Models\SiteInspectionProfile;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Modules\Monitoring\Http\Controllers\DashboardController;
 
 final class MassScanProgress
 {
@@ -19,17 +23,28 @@ final class MassScanProgress
     private const STALE_RUNNING_MINUTES = 45;
 
     /**
+     * @param  array<int, int>  $siteIds
      * @return array<string, mixed>
      */
-    public static function start(int $totalSites, ?int $initiatedByUserId = null, string $triggerMode = 'manual'): array
+    public static function start(int $totalSites, ?int $initiatedByUserId = null, string $triggerMode = 'manual', array $siteIds = []): array
     {
         $runId = (string) Str::uuid();
         $startedAt = now()->toIso8601String();
         $safeTotalSites = max(0, $totalSites);
+        $tasksPerSite = count(self::stages());
 
         self::finalizeStaleRunIfNeeded();
 
         Cache::put(self::CURRENT_RUN_KEY, $runId, self::CACHE_TTL_SECONDS);
+
+        // Se guarda el set exacto de sitios de esta corrida para poder reconciliar al
+        // final SOLO esos sitios, nunca todos los que por cualquier otra razon esten en
+        // 'unknown' (p. ej. un sitio recien creado o una corrida distinta en paralelo).
+        Cache::put(
+            self::siteIdsKey($runId),
+            array_values(array_unique(array_map('intval', $siteIds))),
+            self::CACHE_TTL_SECONDS,
+        );
 
         Cache::put(self::metaKey($runId), [
             'run_id' => $runId,
@@ -38,7 +53,7 @@ final class MassScanProgress
             'last_progress_at' => $startedAt,
             'completed_at' => null,
             'total_sites' => $safeTotalSites,
-            'total_tasks' => $safeTotalSites * 4,
+            'total_tasks' => $safeTotalSites * $tasksPerSite,
         ], self::CACHE_TTL_SECONDS);
 
         Cache::put(self::doneTasksKey($runId), 0, self::CACHE_TTL_SECONDS);
@@ -56,7 +71,7 @@ final class MassScanProgress
                 'trigger_mode' => $triggerMode,
                 'status' => 'running',
                 'total_sites' => $safeTotalSites,
-                'total_tasks' => $safeTotalSites * 4,
+                'total_tasks' => $safeTotalSites * $tasksPerSite,
                 'completed_tasks' => 0,
                 'failed_tasks' => 0,
                 'started_at' => now(),
@@ -70,10 +85,10 @@ final class MassScanProgress
             'started_at' => $startedAt,
             'completed_at' => null,
             'total_sites' => $safeTotalSites,
-            'total_tasks' => $safeTotalSites * 4,
+            'total_tasks' => $safeTotalSites * $tasksPerSite,
             'completed_tasks' => 0,
             'failed_tasks' => 0,
-            'remaining_tasks' => $safeTotalSites * 4,
+            'remaining_tasks' => $safeTotalSites * $tasksPerSite,
             'progress_pct' => $safeTotalSites > 0 ? 0.0 : 100.0,
             'stages' => self::emptyStages($safeTotalSites),
         ];
@@ -157,25 +172,42 @@ final class MassScanProgress
         $failedTasks = max(0, (int) Cache::get(self::failedTasksKey($runId), 0));
 
         if ($totalTasks > 0 && $doneTasks >= $totalTasks) {
-            $updatedMeta['status'] = $failedTasks > 0 ? 'completed_with_errors' : 'completed_ok';
+            $pendingSites = self::reconcilePendingSites($runId);
+            $updatedMeta['status'] = ($failedTasks > 0 || $pendingSites > 0) ? 'completed_with_errors' : 'completed_ok';
             $updatedMeta['completed_at'] = now()->toIso8601String();
             $updatedMeta['last_progress_at'] = now()->toIso8601String();
+
+            if ($pendingSites > 0) {
+                $updatedMeta['last_error'] = sprintf('Mass scan finished with %d assets still marked as SIN_ACTUALIZAR.', $pendingSites);
+            }
 
             Cache::put(self::metaKey($runId), $updatedMeta, self::CACHE_TTL_SECONDS);
 
             if (self::canPersistHistory()) {
+                $payload = [
+                    'status' => $updatedMeta['status'],
+                    'completed_tasks' => $doneTasks,
+                    'failed_tasks' => $failedTasks,
+                    'completed_at' => now(),
+                    'last_progress_at' => now(),
+                ];
+
+                if ($pendingSites > 0) {
+                    $payload['last_error'] = (string) $updatedMeta['last_error'];
+                }
+
                 MonitoringMassScanRun::query()
                     ->where('run_id', $runId)
-                    ->update([
-                        'status' => $updatedMeta['status'],
-                        'completed_tasks' => $doneTasks,
-                        'failed_tasks' => $failedTasks,
-                        'completed_at' => now(),
-                        'last_progress_at' => now(),
-                    ]);
+                    ->update($payload);
             }
 
             Cache::forget(self::CURRENT_RUN_KEY);
+
+            // Sin esto, el dashboard sigue mostrando los conteos/diagnosticos
+            // cacheados de ANTES del escaneo hasta que expire su TTL (45s) —
+            // el usuario ve el aviso de "escaneo completado" pero las cifras
+            // en pantalla no reflejan el resultado real todavia.
+            DashboardController::forgetDashboardCache();
 
             return;
         }
@@ -203,8 +235,15 @@ final class MassScanProgress
         $meta['completed_at'] = now()->toIso8601String();
         $meta['last_progress_at'] = now()->toIso8601String();
 
+        $pendingSites = self::reconcilePendingSites($runId);
+
+        if ($pendingSites > 0) {
+            $meta['last_error'] = sprintf('Mass scan aborted with %d assets still marked as SIN_ACTUALIZAR.', $pendingSites);
+        }
+
         Cache::put(self::metaKey($runId), $meta, self::CACHE_TTL_SECONDS);
         Cache::forget(self::CURRENT_RUN_KEY);
+        DashboardController::forgetDashboardCache();
 
         if (! self::canPersistHistory()) {
             return;
@@ -212,15 +251,70 @@ final class MassScanProgress
 
         $failedTasks = max(1, (int) Cache::get(self::failedTasksKey($runId), 0));
 
+        $payload = [
+            'status' => 'completed_with_errors',
+            'failed_tasks' => $failedTasks,
+            'last_error' => mb_substr($errorMessage, 0, 1000),
+            'completed_at' => now(),
+            'last_progress_at' => now(),
+        ];
+
+        if ($pendingSites > 0) {
+            $payload['last_error'] = sprintf(
+                '%s | Mass scan aborted with %d assets still marked as SIN_ACTUALIZAR.',
+                mb_substr($errorMessage, 0, 800),
+                $pendingSites,
+            );
+        }
+
         MonitoringMassScanRun::query()
             ->where('run_id', $runId)
-            ->update([
-                'status' => 'completed_with_errors',
-                'failed_tasks' => $failedTasks,
-                'last_error' => mb_substr($errorMessage, 0, 1000),
-                'completed_at' => now(),
-                'last_progress_at' => now(),
-            ]);
+            ->update($payload);
+    }
+
+    /**
+     * Cancelacion pedida por un usuario (a diferencia de abortRun, que es para
+     * fallos del propio proceso). A proposito NO usa reconcilePendingSites: ese
+     * metodo marca los sitios pendientes como 'down' y borra su tecnologia
+     * detectada, que es correcto para un fallo real pero no para una cancelacion
+     * manual. Aqui los sitios que no alcanzaron a re-inspeccionarse conservan su
+     * ultimo estado y tecnologia conocidos, y solo quedan marcados como
+     * interrumpidos por esta corrida especifica.
+     *
+     * @return array<string, mixed>|null null si no hay nada que cancelar (el run
+     *                                   ya no existe o ya no esta 'running')
+     */
+    public static function cancel(string $runId): ?array
+    {
+        $meta = self::getMeta($runId);
+
+        if ($meta === null || ($meta['status'] ?? 'running') !== 'running') {
+            return null;
+        }
+
+        $interruptedSites = self::markPendingSitesInterrupted($runId);
+
+        $meta['status'] = 'cancelled';
+        $meta['completed_at'] = now()->toIso8601String();
+        $meta['last_progress_at'] = now()->toIso8601String();
+        Cache::put(self::metaKey($runId), $meta, self::CACHE_TTL_SECONDS);
+        Cache::forget(self::CURRENT_RUN_KEY);
+        DashboardController::forgetDashboardCache();
+
+        if (self::canPersistHistory()) {
+            MonitoringMassScanRun::query()
+                ->where('run_id', $runId)
+                ->update([
+                    'status' => 'cancelled',
+                    'completed_at' => now(),
+                    'last_progress_at' => now(),
+                    'last_error' => $interruptedSites > 0
+                        ? sprintf('Escaneo cancelado manualmente con %d sitio(s) sin re-inspeccionar.', $interruptedSites)
+                        : null,
+                ]);
+        }
+
+        return self::get($runId);
     }
 
     /**
@@ -253,6 +347,8 @@ final class MassScanProgress
         $meta = self::getMeta($runId);
 
         if ($meta === null) {
+            self::finalizeStalePersistedRunIfNeeded($runId);
+
             return null;
         }
 
@@ -298,11 +394,64 @@ final class MassScanProgress
     }
 
     /**
+     * Marca como interrumpidos los sitios de esta corrida que aun no habian
+     * terminado la etapa 'inspection' al momento de cancelar. Si el sitio ya
+     * tenia un perfil de inspeccion previo (de una corrida anterior), se deja
+     * intacto -CMS, runtime, riesgo, etc.- y solo se agrega la marca de tiempo
+     * de interrupcion.
+     */
+    private static function markPendingSitesInterrupted(string $runId): int
+    {
+        $runSiteIds = Cache::get(self::siteIdsKey($runId));
+
+        if (! is_array($runSiteIds) || $runSiteIds === []) {
+            return 0;
+        }
+
+        $pendingSiteIds = array_values(array_filter(
+            array_map('intval', $runSiteIds),
+            static fn (int $siteId): bool => ! Cache::has(self::markerKey($runId, 'inspection', $siteId)),
+        ));
+
+        if ($pendingSiteIds === []) {
+            return 0;
+        }
+
+        $now = now();
+
+        $existingProfiles = SiteInspectionProfile::query()
+            ->whereIn('site_id', $pendingSiteIds)
+            ->get()
+            ->keyBy('site_id');
+
+        foreach ($pendingSiteIds as $siteId) {
+            $profile = $existingProfiles->get($siteId);
+
+            if ($profile instanceof SiteInspectionProfile) {
+                $profile->forceFill(['scan_interrupted_at' => $now])->save();
+
+                continue;
+            }
+
+            // Sitio nunca antes inspeccionado: no hay tecnologia previa que
+            // preservar, solo queda constancia minima de la interrupcion.
+            SiteInspectionProfile::query()->create([
+                'site_id' => $siteId,
+                'scan_run_id' => $runId,
+                'analysis_version' => 'vertical-inspector-v1',
+                'scan_interrupted_at' => $now,
+            ]);
+        }
+
+        return count($pendingSiteIds);
+    }
+
+    /**
      * @return array<int, string>
      */
     private static function stages(): array
     {
-        return ['uptime', 'ssl', 'headers', 'technology'];
+        return ['inspection'];
     }
 
     /**
@@ -337,37 +486,42 @@ final class MassScanProgress
 
     private static function metaKey(string $runId): string
     {
-        return 'monitoring:mass-scan:' . $runId . ':meta';
+        return 'monitoring:mass-scan:'.$runId.':meta';
     }
 
     private static function doneTasksKey(string $runId): string
     {
-        return 'monitoring:mass-scan:' . $runId . ':done-tasks';
+        return 'monitoring:mass-scan:'.$runId.':done-tasks';
+    }
+
+    private static function siteIdsKey(string $runId): string
+    {
+        return 'monitoring:mass-scan:'.$runId.':site-ids';
     }
 
     private static function failedTasksKey(string $runId): string
     {
-        return 'monitoring:mass-scan:' . $runId . ':failed-tasks';
+        return 'monitoring:mass-scan:'.$runId.':failed-tasks';
     }
 
     private static function stageDoneKey(string $runId, string $stage): string
     {
-        return 'monitoring:mass-scan:' . $runId . ':stage:' . $stage . ':done';
+        return 'monitoring:mass-scan:'.$runId.':stage:'.$stage.':done';
     }
 
     private static function stageFailedKey(string $runId, string $stage): string
     {
-        return 'monitoring:mass-scan:' . $runId . ':stage:' . $stage . ':failed';
+        return 'monitoring:mass-scan:'.$runId.':stage:'.$stage.':failed';
     }
 
     private static function markerKey(string $runId, string $stage, int $siteId): string
     {
-        return 'monitoring:mass-scan:' . $runId . ':marker:' . $stage . ':' . $siteId;
+        return 'monitoring:mass-scan:'.$runId.':marker:'.$stage.':'.$siteId;
     }
 
     private static function failureMarkerKey(string $runId, string $stage, int $siteId): string
     {
-        return 'monitoring:mass-scan:' . $runId . ':failure-marker:' . $stage . ':' . $siteId;
+        return 'monitoring:mass-scan:'.$runId.':failure-marker:'.$stage.':'.$siteId;
     }
 
     private static function canPersistHistory(): bool
@@ -422,5 +576,184 @@ final class MassScanProgress
                 'completed_at' => now(),
                 'last_progress_at' => now(),
             ]);
+    }
+
+    private static function finalizeStalePersistedRunIfNeeded(string $runId): void
+    {
+        if (! self::canPersistHistory()) {
+            return;
+        }
+
+        $run = MonitoringMassScanRun::query()
+            ->where('run_id', $runId)
+            ->where('status', 'running')
+            ->first();
+
+        if (! $run instanceof MonitoringMassScanRun) {
+            return;
+        }
+
+        $lastProgressAt = $run->last_progress_at ?? $run->started_at;
+
+        if (! $lastProgressAt instanceof CarbonImmutable && $lastProgressAt !== null) {
+            $lastProgressAt = CarbonImmutable::parse((string) $lastProgressAt);
+        }
+
+        if (! $lastProgressAt instanceof CarbonImmutable) {
+            return;
+        }
+
+        if ($lastProgressAt->gt(now()->subMinutes(self::STALE_RUNNING_MINUTES))) {
+            return;
+        }
+
+        $run->forceFill([
+            'status' => 'incomplete',
+            'completed_at' => now(),
+            'last_progress_at' => now(),
+        ])->save();
+    }
+
+    private static function reconcilePendingSites(string $runId): int
+    {
+        // Solo se reconcilian sitios que pertenecen a ESTA corrida. Sin esa lista no hay
+        // forma segura de saber cuales 'unknown' son de este run, asi que no se toca nada
+        // en vez de arriesgar marcar como 'down' sitios de otra corrida o recien creados.
+        $runSiteIds = Cache::get(self::siteIdsKey($runId));
+
+        if (! is_array($runSiteIds) || $runSiteIds === []) {
+            return 0;
+        }
+
+        $siteIds = Site::query()
+            ->whereIn('id', $runSiteIds)
+            ->where('current_status', 'unknown')
+            ->pluck('id')
+            ->map(static fn ($id): int => (int) $id)
+            ->all();
+
+        $pendingCount = count($siteIds);
+
+        if ($pendingCount === 0) {
+            return 0;
+        }
+
+        $diagnostic = 'La inspección no finalizó correctamente durante el escaneo masivo.';
+
+        Log::error(sprintf('Mass scan finished with %d assets still marked as SIN_ACTUALIZAR.', $pendingCount), [
+            'run_id' => $runId,
+            'site_ids' => $siteIds,
+        ]);
+
+        Site::query()
+            ->whereIn('id', $siteIds)
+            ->update([
+                'current_status' => 'down',
+                'last_checked_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        $profiles = SiteInspectionProfile::query()
+            ->whereIn('site_id', $siteIds)
+            ->get()
+            ->keyBy('site_id');
+
+        foreach ($siteIds as $siteId) {
+            $profile = $profiles->get($siteId);
+
+            if ($profile instanceof SiteInspectionProfile) {
+                $analysisErrors = self::normalizedPendingAnalysisErrors($profile, $diagnostic);
+
+                $profile->forceFill([
+                    'scan_run_id' => $runId,
+                    'risk_score' => max(95, (int) ($profile->risk_score ?? 95)),
+                    'risk_level' => 'Crítico',
+                    'essential_checks_complete' => false,
+                    'analysis_errors' => $analysisErrors,
+                    'inspected_at' => $profile->inspected_at ?? now(),
+                    'scan_interrupted_at' => null,
+                ])->save();
+
+                continue;
+            }
+
+            SiteInspectionProfile::query()->create([
+                'site_id' => $siteId,
+                'scan_run_id' => $runId,
+                'analysis_version' => 'vertical-inspector-v1',
+                'dns_status' => 'error',
+                'http_status' => null,
+                'https_status' => null,
+                'ssl_status' => 'error',
+                'security_headers_status' => 'error',
+                'body_status' => 'error',
+                'fingerprint_status' => 'error',
+                'cms_name' => 'No determinado',
+                'cms_version' => 'No determinado',
+                'cms_confidence' => 'low',
+                'server_signature' => 'No determinado',
+                'runtime_name' => 'No determinado',
+                'runtime_version' => 'No determinado',
+                'risk_score' => 95,
+                'risk_level' => 'Crítico',
+                'essential_checks_complete' => false,
+                'analysis_errors' => [$diagnostic],
+                'inspected_at' => now(),
+            ]);
+        }
+
+        return $pendingCount;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function normalizedPendingAnalysisErrors(SiteInspectionProfile $profile, string $fallbackDiagnostic): array
+    {
+        $errors = [];
+        $dnsStatus = (string) ($profile->dns_status ?? 'error');
+        $dnsError = trim((string) ($profile->dns_error ?? ''));
+        $sslError = trim((string) ($profile->ssl_error ?? ''));
+        $bodyError = trim((string) ($profile->body_error ?? ''));
+        $rawErrors = is_array($profile->analysis_errors) ? $profile->analysis_errors : [];
+        $rawText = mb_strtolower(implode(' | ', array_map(static fn (mixed $value): string => trim((string) $value), $rawErrors)));
+
+        if ($dnsStatus === 'no_records' || str_contains(mb_strtolower($dnsError), 'no dns') || str_contains($rawText, 'name does not resolve')) {
+            $errors[] = 'No existen registros DNS para el dominio.';
+        }
+
+        if ($errors === []) {
+            $combinedTransportText = mb_strtolower(trim($sslError.' | '.$bodyError.' | '.$rawText));
+
+            if (str_contains($combinedTransportText, 'timeout') || str_contains($combinedTransportText, 'timed out')) {
+                $errors[] = 'La inspección agotó el tiempo de espera al establecer conexión HTTP.';
+            } elseif (str_contains($combinedTransportText, 'refused')) {
+                $errors[] = 'La conexión HTTP fue rechazada por el servidor.';
+            } elseif (str_contains($combinedTransportText, 'ssl') || str_contains($combinedTransportText, 'handshake')) {
+                $errors[] = 'No fue posible completar el handshake SSL del sitio.';
+            } elseif (str_contains($combinedTransportText, 'http:no-connection')) {
+                $errors[] = 'No fue posible establecer conexión HTTP.';
+            }
+        }
+
+        foreach ($rawErrors as $rawError) {
+            $message = trim((string) $rawError);
+
+            if ($message === '' || in_array($message, $errors, true)) {
+                continue;
+            }
+
+            if (str_starts_with(mb_strtolower($message), 'dns:') || str_starts_with(mb_strtolower($message), 'http:') || str_starts_with(mb_strtolower($message), 'ssl:')) {
+                continue;
+            }
+
+            $errors[] = $message;
+        }
+
+        if ($errors === []) {
+            $errors[] = $fallbackDiagnostic;
+        }
+
+        return array_values(array_unique($errors));
     }
 }

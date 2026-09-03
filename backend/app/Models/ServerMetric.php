@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -27,18 +28,18 @@ final class ServerMetric extends Model
     ];
 
     protected $casts = [
-        'recorded_at'    => 'immutable_datetime',
-        'created_at'     => 'immutable_datetime',
-        'cpu_usage_pct'  => 'float',
-        'ram_usage_pct'  => 'float',
-        'ram_used_mb'    => 'integer',
-        'ram_total_mb'   => 'integer',
+        'recorded_at' => 'immutable_datetime',
+        'created_at' => 'immutable_datetime',
+        'cpu_usage_pct' => 'float',
+        'ram_usage_pct' => 'float',
+        'ram_used_mb' => 'integer',
+        'ram_total_mb' => 'integer',
         'disk_usage_pct' => 'float',
-        'disk_used_gb'   => 'float',
-        'disk_total_gb'  => 'float',
-        'load_avg_1'     => 'float',
-        'load_avg_5'     => 'float',
-        'load_avg_15'    => 'float',
+        'disk_used_gb' => 'float',
+        'disk_total_gb' => 'float',
+        'load_avg_1' => 'float',
+        'load_avg_5' => 'float',
+        'load_avg_15' => 'float',
     ];
 
     // -----------------------------------------------------------------
@@ -55,11 +56,10 @@ final class ServerMetric extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<ServerMetric> $query
-     * @param int $hours
-     * @return \Illuminate\Database\Eloquent\Builder<ServerMetric>
+     * @param  Builder<ServerMetric>  $query
+     * @return Builder<ServerMetric>
      */
-    public function scopeInLastHours(\Illuminate\Database\Eloquent\Builder $query, int $hours): \Illuminate\Database\Eloquent\Builder
+    public function scopeInLastHours(Builder $query, int $hours): Builder
     {
         return $query->where('recorded_at', '>=', now()->subHours($hours));
     }

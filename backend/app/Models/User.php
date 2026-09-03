@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -16,8 +19,8 @@ use Spatie\Permission\Traits\HasRoles;
 
 final class User extends Authenticatable implements MustVerifyEmail
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasApiTokens, HasFactory, HasRoles, LogsActivity, Notifiable;
+    /** @use HasFactory<UserFactory> */
+    use HasApiTokens, HasFactory, HasRoles, LogsActivity, Notifiable, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -33,18 +36,8 @@ final class User extends Authenticatable implements MustVerifyEmail
         'remember_token',
         'two_factor_secret',
         'two_factor_recovery_codes',
+        'two_factor_last_verified_timestamp',
     ];
-
-    protected function casts(): array
-    {
-        return [
-            'email_verified_at'        => 'datetime',
-            'last_login_at'            => 'datetime',
-            'two_factor_confirmed_at'  => 'datetime',
-            'password'                 => 'hashed',
-            'is_active'                => 'boolean',
-        ];
-    }
 
     // ── Auditoría ────────────────────────────────────────────
     public function getActivitylogOptions(): LogOptions
@@ -58,21 +51,21 @@ final class User extends Authenticatable implements MustVerifyEmail
     // ── Relaciones ───────────────────────────────────────────
     public function accessLogs(): HasMany
     {
-        return $this->hasMany(\App\Models\AccessLog::class);
+        return $this->hasMany(AccessLog::class);
     }
 
     public function acknowledgedAlerts(): HasMany
     {
-        return $this->hasMany(\App\Models\Alert::class, 'acknowledged_by');
+        return $this->hasMany(Alert::class, 'acknowledged_by');
     }
 
     public function resolvedAlerts(): HasMany
     {
-        return $this->hasMany(\App\Models\Alert::class, 'resolved_by');
+        return $this->hasMany(Alert::class, 'resolved_by');
     }
 
     // ── Scopes ───────────────────────────────────────────────
-    public function scopeActive(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
     }
@@ -87,5 +80,21 @@ final class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->two_factor_confirmed_at !== null;
     }
-}
 
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'last_login_at' => 'datetime',
+            'two_factor_confirmed_at' => 'datetime',
+            // Cifrados en reposo (Laravel usa APP_KEY): el secreto TOTP y los
+            // codigos de recuperacion son equivalentes a una contraseña
+            // permanente de la cuenta, no deben quedar en texto plano en la BD.
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'password' => 'hashed',
+            'is_active' => 'boolean',
+            'notify_on_critical_incidents' => 'boolean',
+        ];
+    }
+}

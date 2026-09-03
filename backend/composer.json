@@ -1,12 +1,13 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "udg/sentinel",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
-    "license": "MIT",
+    "description": "Monitoreo en tiempo real de la infraestructura web institucional de la Universidad de Guadalajara.",
+    "keywords": ["laravel", "monitoring", "udg"],
+    "license": "proprietary",
     "require": {
         "php": "^8.2",
+        "bacon/bacon-qr-code": "^3.1",
         "barryvdh/laravel-dompdf": "*",
         "inertiajs/inertia-laravel": "*",
         "laravel/framework": "^12.0",
@@ -15,6 +16,7 @@
         "laravel/tinker": "^2.10.1",
         "nwidart/laravel-modules": "*",
         "phpoffice/phpspreadsheet": "^5.8",
+        "pragmarx/google2fa": "^9.1",
         "spatie/laravel-activitylog": "*",
         "spatie/laravel-permission": "*",
         "tightenco/ziggy": "*"

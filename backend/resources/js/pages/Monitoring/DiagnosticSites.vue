@@ -1,13 +1,13 @@
-<template>
-  <main class="min-h-screen bg-slate-950 text-slate-100">
+﻿<template>
+  <main class="min-h-screen bg-sky-50 text-slate-900">
     <section class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <header class="mb-6 flex flex-col gap-3 border-b border-slate-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
+      <header class="mb-6 flex flex-col gap-3 border-b border-sky-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <a href="/monitoring/dashboard" class="text-sm text-cyan-300 hover:text-cyan-200">Volver al dashboard</a>
-          <h1 class="mt-2 text-3xl font-semibold text-white sm:text-4xl">Sitios por diagnóstico: {{ bucketLabel }}</h1>
-          <p class="mt-2 text-sm text-slate-300">Listado detallado de los sitios incluidos en la barra seleccionada.</p>
+          <a href="/monitoring/dashboard" class="text-sm text-cyan-600 hover:text-cyan-700">Volver al dashboard</a>
+          <h1 class="mt-2 text-fluid-2xl font-semibold text-slate-900">Sitios por diagnóstico: {{ bucketLabel }}</h1>
+          <p class="mt-2 text-sm text-slate-700">Listado detallado de los sitios incluidos en la barra seleccionada.</p>
         </div>
-        <p class="text-xs text-slate-400">Actualizado: {{ formattedUpdatedAt }}</p>
+        <p class="text-xs text-slate-600">Actualizado: {{ formattedUpdatedAt }}</p>
       </header>
 
       <form class="mb-5 flex w-full max-w-xl gap-2" @submit.prevent="applySearch">
@@ -15,17 +15,17 @@
           v-model="localSearch"
           type="search"
           placeholder="Buscar sitio, dominio o URL"
-          class="h-11 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+          class="h-11 flex-1 rounded-xl border border-sky-300 bg-sky-50 px-4 text-sm text-slate-900 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
         />
-        <button type="submit" class="h-11 rounded-xl bg-cyan-400 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300">Buscar</button>
-        <button type="button" class="h-11 rounded-xl border border-slate-700 px-4 text-sm text-slate-200 transition hover:border-slate-500" @click="clearSearch">Limpiar</button>
+        <button type="submit" class="h-11 rounded-xl bg-cyan-400 px-4 text-sm font-semibold text-slate-50 transition hover:bg-cyan-300">Buscar</button>
+        <button type="button" class="h-11 rounded-xl border border-sky-300 px-4 text-sm text-slate-800 transition hover:border-sky-500" @click="clearSearch">Limpiar</button>
       </form>
 
-      <section class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+      <section class="rounded-3xl border border-sky-200 bg-white/80 p-5">
         <div class="overflow-x-auto">
-          <table class="min-w-full divide-y divide-slate-800 text-left text-sm">
+          <table class="min-w-full divide-y divide-sky-200 text-left text-sm">
             <thead>
-              <tr class="text-slate-400">
+              <tr class="text-slate-600">
                 <th class="px-4 py-4 font-medium">Sitio</th>
                 <th class="px-4 py-4 font-medium">Dominio</th>
                 <th class="px-4 py-4 font-medium">CMS</th>
@@ -38,43 +38,43 @@
                 <th class="px-4 py-4 font-medium">Acciones</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-800/90">
-              <tr v-for="site in rows" :key="site.id" class="cursor-pointer transition hover:bg-slate-800/70" @click="openSiteDetail(site.id)">
+            <tbody class="divide-y divide-sky-200/90">
+              <tr v-for="site in rows" :key="site.id" class="cursor-pointer transition hover:bg-sky-200/70" @click="openSiteDetail(site.id)">
                 <td class="px-4 py-4 align-middle">
-                  <p class="font-medium text-white">{{ site.name || `Sitio #${site.id}` }}</p>
+                  <p class="font-medium text-slate-900">{{ site.name || `Sitio #${site.id}` }}</p>
                   <p class="mt-1 text-xs text-slate-500">Abrir detalle</p>
                 </td>
-                <td class="px-4 py-4 text-slate-300">
-                  <a :href="safeSiteUrl(site)" target="_blank" rel="noopener noreferrer" class="text-cyan-300 hover:text-cyan-200" @click.stop>
+                <td class="px-4 py-4 text-slate-700">
+                  <a :href="safeSiteUrl(site)" target="_blank" rel="noopener noreferrer" class="text-cyan-600 hover:text-cyan-700" @click.stop>
                     {{ displayDomain(site) }}
                   </a>
                 </td>
-                <td class="px-4 py-4 text-slate-300">{{ labelize(site.cms || 'Sin dato') }}</td>
-                <td class="px-4 py-4 text-slate-300">{{ site.server_ip || 'Externo' }}</td>
-                <td class="px-4 py-4 text-slate-300">{{ site.certificate_label || 'No' }}</td>
-                <td class="px-4 py-4 text-slate-300">{{ statusLabel(resolveStatusCode(site)) }}</td>
-                <td class="px-4 py-4 text-slate-300">{{ site.project_status || '-' }}</td>
-                <td class="px-4 py-4 text-slate-300">{{ site.comments || '-' }}</td>
-                <td class="px-4 py-4 text-slate-400">{{ formatCheckTime(site.last_checked_at) }}</td>
+                <td class="px-4 py-4 text-slate-700">{{ labelize(site.cms || 'Sin dato') }}</td>
+                <td class="px-4 py-4 text-slate-700">{{ site.server_ip || 'Externo' }}</td>
+                <td class="px-4 py-4 text-slate-700">{{ site.certificate_label || 'No' }}</td>
+                <td class="px-4 py-4 text-slate-700">{{ statusLabel(resolveStatusCode(site)) }}</td>
+                <td class="px-4 py-4 text-slate-700">{{ site.project_status || '-' }}</td>
+                <td class="px-4 py-4 text-slate-700">{{ site.comments || '-' }}</td>
+                <td class="px-4 py-4 text-slate-600">{{ formatCheckTime(site.last_checked_at) }}</td>
                 <td class="px-4 py-4" @click.stop>
-                  <button type="button" class="rounded-lg border border-cyan-600/60 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:border-cyan-400" @click="scanSingleSite(site.id)">
+                  <button type="button" class="rounded-lg border border-cyan-600/60 px-3 py-1.5 text-xs font-semibold text-cyan-700 hover:border-cyan-400" @click="scanSingleSite(site.id)">
                     Reescanear
                   </button>
                 </td>
               </tr>
               <tr v-if="rows.length === 0">
-                <td :colspan="10" class="px-4 py-12 text-center text-sm text-slate-400">No hay sitios en este diagnóstico con el filtro actual.</td>
+                <td :colspan="10" class="px-4 py-12 text-center text-sm text-slate-600">No hay sitios en este diagnóstico con el filtro actual.</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <footer class="mt-5 flex flex-col gap-3 border-t border-slate-800 pt-5 sm:flex-row sm:items-center sm:justify-between">
-          <div class="text-sm text-slate-400">Mostrando {{ firstVisibleItem }}-{{ lastVisibleItem }} de {{ total }} sitios.</div>
+        <footer class="mt-5 flex flex-col gap-3 border-t border-sky-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <div class="text-sm text-slate-600">Mostrando {{ firstVisibleItem }}-{{ lastVisibleItem }} de {{ total }} sitios.</div>
           <div class="flex items-center gap-3">
             <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Página {{ currentPage }} de {{ lastPage }}</p>
-            <button type="button" class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">Anterior</button>
-            <button type="button" class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50" :disabled="currentPage >= lastPage" @click="goToPage(currentPage + 1)">Siguiente</button>
+            <button type="button" class="rounded-xl border border-sky-300 px-4 py-2 text-sm text-slate-800 transition hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-50" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">Anterior</button>
+            <button type="button" class="rounded-xl border border-sky-300 px-4 py-2 text-sm text-slate-800 transition hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-50" :disabled="currentPage >= lastPage" @click="goToPage(currentPage + 1)">Siguiente</button>
           </div>
         </footer>
       </section>

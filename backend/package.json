@@ -1,4 +1,5 @@
 {
+    "name": "udg-sentinel",
     "private": true,
     "type": "module",
     "scripts": {

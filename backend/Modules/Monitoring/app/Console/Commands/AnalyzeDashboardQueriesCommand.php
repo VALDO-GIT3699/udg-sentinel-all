@@ -55,6 +55,7 @@ final class AnalyzeDashboardQueriesCommand extends Command
 
         if ($hasErrors) {
             $this->warn('Algunas consultas no pudieron analizarse. Verifica conectividad DB y esquema migrado.');
+
             return self::FAILURE;
         }
 
@@ -85,7 +86,7 @@ final class AnalyzeDashboardQueriesCommand extends Command
                 SUM(CASE WHEN sites.is_active = true AND sites.is_monitored = true AND sites.current_status = 'up' THEN 1 ELSE 0 END) as up_count,
                 SUM(CASE WHEN sites.is_active = true AND sites.is_monitored = true AND sites.current_status = 'degraded' THEN 1 ELSE 0 END) as degraded_count,
                 SUM(CASE WHEN sites.is_active = true AND sites.is_monitored = true AND sites.current_status = 'down' THEN 1 ELSE 0 END) as down_count,
-                SUM(CASE WHEN sites.is_active = true AND sites.is_monitored = true AND sites.current_status = 'unknown' THEN 1 ELSE 0 END) as unknown_count"
+                SUM(CASE WHEN sites.is_active = true AND sites.is_monitored = true AND sites.current_status = 'unknown' THEN 1 ELSE 0 END) as unknown_count",
             )
             ->groupBy('site_groups.id', 'site_groups.name')
             ->orderBy('site_groups.name');
@@ -132,13 +133,13 @@ final class AnalyzeDashboardQueriesCommand extends Command
     }
 
     /**
-     * @param array<int, mixed> $bindings
+     * @param  array<int, mixed>  $bindings
      * @return array<int, object>
      */
     private function runExplain(string $driver, string $sql, array $bindings): array
     {
         $prefix = $driver === 'sqlite' ? 'EXPLAIN QUERY PLAN ' : 'EXPLAIN ';
 
-        return DB::select($prefix . $sql, $bindings);
+        return DB::select($prefix.$sql, $bindings);
     }
 }

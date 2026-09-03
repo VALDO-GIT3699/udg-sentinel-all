@@ -1,8 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Support\Facades\Route;
-use Modules\Monitoring\Http\Controllers\SiteDetailController;
 use Modules\Monitoring\Http\Controllers\SiteController;
+use Modules\Monitoring\Http\Controllers\SiteDetailController;
 use Modules\Monitoring\Http\Controllers\SiteGroupController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {

@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Modules\Inventory\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Modules\Inventory\Console\Commands\DispatchAssetClassificationsCommand;
 use Nwidart\Modules\Support\ModuleServiceProvider;
-use Illuminate\Console\Scheduling\Schedule;
 
 class InventoryServiceProvider extends ModuleServiceProvider
 {
@@ -39,15 +41,9 @@ class InventoryServiceProvider extends ModuleServiceProvider
 
     /**
      * Define module schedules.
-     *
-     * @param $schedule
      */
     protected function configureSchedules(Schedule $schedule): void
     {
-        $schedule
-            ->command('inventory:dispatch-asset-classifications --limit=250')
-            ->hourly()
-            ->withoutOverlapping()
-            ->runInBackground();
+        // Ejecucion manual unicamente: no se programan despachos automaticos.
     }
 }

@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Modules\Monitoring\Http\Controllers;
 
 use App\Contracts\Repositories\SiteRepositoryInterface;
-use App\Models\Site;
-use App\Support\AssetIntelligenceSchema;
 use App\Http\Controllers\Controller;
+use App\Models\Site;
+use App\Models\SiteGroup;
+use App\Support\AssetIntelligenceSchema;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Modules\Inventory\Services\Classification\AssetClassificationService;
 
@@ -19,8 +21,7 @@ final class SiteController extends Controller
         private readonly SiteRepositoryInterface $siteRepository,
         private readonly AssetClassificationService $assetClassificationService,
         private readonly AssetIntelligenceSchema $assetSchema,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -39,7 +40,7 @@ final class SiteController extends Controller
         return response()->json([
             'data' => $this->siteRepository->paginate(
                 perPage: max(1, min(100, $request->integer('per_page', 20))),
-                filters: array_filter($filters, static fn ($value): bool => $value !== null && $value !== '')
+                filters: array_filter($filters, static fn ($value): bool => $value !== null && $value !== ''),
             ),
         ]);
     }
@@ -71,6 +72,73 @@ final class SiteController extends Controller
         }
 
         return response()->json(['data' => $site], 201);
+    }
+
+    public function registerMonitoredSite(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'url' => ['required', 'string', 'max:500', 'url:http,https'],
+            'clave' => ['required', 'string', 'regex:/^\d{10}$/'],
+        ], [
+            'url.url' => 'La URL proporcionada no es válida.',
+            'clave.regex' => 'La clave debe tener el formato ddmmaaaaHH (10 dígitos).',
+        ]);
+
+        if (! $this->isRegistrationKeyValid($validated['clave'])) {
+            return response()->json([
+                'message' => 'Clave inválida o expirada. Usa el código vigente (fecha y hora actual, formato ddmmaaaaHH, hora de Guadalajara).',
+            ], 422);
+        }
+
+        $url = trim($validated['url']);
+        $host = parse_url($url, PHP_URL_HOST);
+        $domain = $host !== null ? mb_strtolower((string) $host) : '';
+
+        if ($domain === '') {
+            return response()->json(['message' => 'La URL proporcionada no es válida.'], 422);
+        }
+
+        if ($this->hostPointsToPrivateNetwork($domain)) {
+            return response()->json([
+                'message' => 'La URL apunta a una red interna o no permitida y no puede registrarse.',
+            ], 422);
+        }
+
+        if ($this->siteRepository->findByDomain($domain) !== null) {
+            return response()->json([
+                'message' => 'Ya existe un sitio registrado con ese dominio.',
+            ], 422);
+        }
+
+        $siteGroup = SiteGroup::query()->firstOrCreate(
+            ['slug' => 'altas-manuales'],
+            [
+                'name' => 'Altas manuales',
+                'description' => 'Sitios registrados manualmente desde el dashboard.',
+                'color' => '#0EA5E9',
+            ],
+        );
+
+        $site = $this->siteRepository->create([
+            'site_group_id' => $siteGroup->id,
+            'name' => $domain,
+            'slug' => $this->buildUniqueSiteSlug($domain),
+            'domain' => $domain,
+            'url' => $url,
+        ]);
+
+        if (function_exists('activity')) {
+            activity()
+                ->performedOn($site)
+                ->causedBy($request->user())
+                ->withProperties(['action' => 'site.registered_manual', 'url' => $url])
+                ->log('Sitio registrado manualmente desde el dashboard');
+        }
+
+        return response()->json([
+            'message' => 'Sitio registrado correctamente.',
+            'data' => $site,
+        ], 201);
     }
 
     public function show(Site $site): JsonResponse
@@ -113,13 +181,36 @@ final class SiteController extends Controller
         return response()->json(['data' => $site->fresh()]);
     }
 
-    public function destroy(Site $site): JsonResponse
+    /**
+     * Eliminar (soft delete) un sitio exige la misma clave ddmmaaaaHH que se
+     * usa para registrar uno nuevo -reutilizando isRegistrationKeyValid()-,
+     * ademas del permiso dedicado monitoring.delete_sites. Es una accion
+     * destructiva e irreversible desde la UI, asi que no basta con el permiso:
+     * tambien hay que demostrar que se está viendo el reloj en este momento.
+     */
+    public function destroy(Request $request, Site $site): JsonResponse
     {
+        $validated = $request->validate([
+            'clave' => ['required', 'string', 'regex:/^\d{10}$/'],
+        ], [
+            'clave.regex' => 'La clave debe tener el formato ddmmaaaaHH (10 dígitos).',
+        ]);
+
+        if (! $this->isRegistrationKeyValid($validated['clave'])) {
+            return response()->json([
+                'message' => 'Clave inválida o expirada. Usa el código vigente (fecha y hora actual, formato ddmmaaaaHH, hora de Guadalajara).',
+            ], 422);
+        }
+
+        $domain = $site->domain;
+        $siteId = $site->id;
+
         $this->siteRepository->delete($site);
 
         if (function_exists('activity')) {
             activity()
-                ->withProperties(['action' => 'site.deleted', 'site_id' => $site->id])
+                ->causedBy($request->user())
+                ->withProperties(['action' => 'site.deleted', 'site_id' => $siteId, 'domain' => $domain])
                 ->log('Sitio monitoreado eliminado');
         }
 
@@ -199,5 +290,103 @@ final class SiteController extends Controller
             'message' => 'Clasificacion aprobada y bloqueada como manual.',
             'data' => $site->fresh(),
         ]);
+    }
+
+    public function updateLifecycleStatus(Request $request, Site $site): JsonResponse
+    {
+        // No se restringe a Site::LIFECYCLE_STATUSES: el frontend permite capturar un
+        // estatus personalizado (opcion "Otro") como texto libre.
+        $validated = $request->validate([
+            'lifecycle_status' => ['required', 'string', 'max:120'],
+            'elimination_ticket' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $lifecycleStatus = trim((string) $validated['lifecycle_status']);
+        $eliminationTicket = trim((string) ($validated['elimination_ticket'] ?? ''));
+
+        if ($lifecycleStatus === 'Eliminado' && $eliminationTicket === '') {
+            return response()->json([
+                'message' => 'El ticket es obligatorio para marcar un sitio como Eliminado.',
+            ], 422);
+        }
+
+        $site->lifecycle_status = $lifecycleStatus;
+        $site->elimination_ticket = $lifecycleStatus === 'Eliminado' ? $eliminationTicket : null;
+        $site->save();
+
+        return response()->json([
+            'message' => 'Estatus actualizado correctamente.',
+            'data' => $site->fresh(),
+        ]);
+    }
+
+    /**
+     * The registration key is the current moment expressed as ddmmyyyyHH
+     * (day, month, 4-digit year, 24h hour) in the Guadalajara timezone.
+     * A one-hour grace window is accepted so a code typed right before the
+     * hour rolls over still works.
+     */
+    private function isRegistrationKeyValid(string $clave): bool
+    {
+        $now = now('America/Mexico_City');
+
+        foreach ([0, -1] as $hourOffset) {
+            $expected = $now->copy()->addHours($hourOffset)->format('dmYH');
+
+            if (hash_equals($expected, $clave)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Basic SSRF guard: this endpoint lets any authorized user submit an
+     * arbitrary URL that monitoring jobs will later fetch from the server,
+     * so hosts resolving to loopback/private/link-local ranges are rejected.
+     */
+    private function hostPointsToPrivateNetwork(string $host): bool
+    {
+        if ($host === 'localhost' || str_ends_with($host, '.local') || str_ends_with($host, '.localhost')) {
+            return true;
+        }
+
+        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+            return filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+        }
+
+        $resolvedIps = @gethostbynamel($host);
+
+        if ($resolvedIps === false || $resolvedIps === []) {
+            return false;
+        }
+
+        foreach ($resolvedIps as $ip) {
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function buildUniqueSiteSlug(string $domain): string
+    {
+        $base = Str::slug($domain);
+
+        if ($base === '') {
+            $base = 'sitio';
+        }
+
+        $slug = $base;
+        $suffix = 2;
+
+        while (Site::query()->where('slug', $slug)->exists()) {
+            $slug = $base.'-'.$suffix;
+            $suffix++;
+        }
+
+        return $slug;
     }
 }

@@ -28,12 +28,14 @@ interface SiteCheckRepositoryInterface
 
     /**
      * Timeline data points for charting.
+     *
      * @return Collection<int, SiteCheck>
      */
     public function timelineForSite(int $siteId, int $hours = 24, int $limit = 288): Collection;
 
     /**
      * Recent checks across monitored sites for dashboard timeline widgets.
+     *
      * @return Collection<int, SiteCheck>
      */
     public function recentTimeline(int $hours = 1, int $limit = 60): Collection;

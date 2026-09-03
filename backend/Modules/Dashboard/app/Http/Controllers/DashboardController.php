@@ -15,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -290,9 +291,9 @@ final class DashboardController extends Controller
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     * @return Collection<int, array<string, mixed>>
      */
-    private function obsoleteTechnologies(int $limit): \Illuminate\Support\Collection
+    private function obsoleteTechnologies(int $limit): Collection
     {
         $rows = SiteTechnology::query()
             ->join('technologies', 'technologies.id', '=', 'site_technologies.technology_id')

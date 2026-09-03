@@ -20,7 +20,11 @@ final class SecurityHeaders
 
         $cspDirectives = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline'",
+            // Sin 'unsafe-inline': todo el JS (SPA via Vite + login) vive en
+            // archivos externos con mismo origen, no hay <script> inline en
+            // ninguna vista. style-src si necesita 'unsafe-inline' porque
+            // Vue/Tailwind aplican estilos inline en varios componentes.
+            "script-src 'self'",
             "style-src 'self' 'unsafe-inline' https://fonts.bunny.net",
             "font-src 'self' https://fonts.bunny.net data:",
             "img-src 'self' data: https:",
@@ -39,6 +43,12 @@ final class SecurityHeaders
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=()');
+        // Aisla esta pestaña de otras ventanas/pestañas con distinto origen
+        // (mitiga ataques tipo Spectre/side-channel y "tabnabbing" cruzado) y
+        // evita que otros orígenes carguen las respuestas de esta app como
+        // recurso propio.
+        $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin');
+        $response->headers->set('Cross-Origin-Resource-Policy', 'same-origin');
 
         if ($enableCsp) {
             // Keep CSP compatible with Inertia/Vite built assets while blocking mixed/embedded content.

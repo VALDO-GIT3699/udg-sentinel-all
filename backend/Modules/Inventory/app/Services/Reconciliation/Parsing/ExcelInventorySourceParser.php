@@ -31,6 +31,7 @@ final class ExcelInventorySourceParser implements InventorySourceParserInterface
             }
 
             $row = [];
+
             foreach ($headers as $position => $header) {
                 $row[$header] = $values[$position] ?? null;
             }

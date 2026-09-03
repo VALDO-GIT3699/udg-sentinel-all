@@ -15,9 +15,9 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Modules\Monitoring\Events\CertificateExpiring;
 use Modules\Monitoring\Events\AlertResolved;
 use Modules\Monitoring\Events\AlertTriggered;
+use Modules\Monitoring\Events\CertificateExpiring;
 use Modules\Monitoring\Events\SslExpired;
 use Modules\Monitoring\Events\SslExpiringSoon;
 use Modules\Monitoring\Support\MassScanProgress;
@@ -35,8 +35,7 @@ final class RunSslCheckJob implements ShouldQueue
         private readonly int $siteId,
         private readonly ?string $massScanRunId = null,
         private readonly bool $forceScan = false,
-    )
-    {
+    ) {
         $this->onQueue((string) env('SENTINEL_QUEUE_SSL', 'monitoring-ssl'));
     }
 
@@ -89,16 +88,16 @@ final class RunSslCheckJob implements ShouldQueue
                         $errstr,
                         5,
                         STREAM_CLIENT_CONNECT,
-                        $context
+                        $context,
                     );
                 } catch (\ErrorException $exception) {
                     $this->openSslAlertIfNeeded(
                         $alertRepository,
                         $site,
                         'SSL requiere atencion',
-                        'No fue posible abrir conexion SSL: ' . $exception->getMessage(),
+                        'No fue posible abrir conexion SSL: '.$exception->getMessage(),
                         'high',
-                        'ssl.expiring.soon'
+                        'ssl.expiring.soon',
                     );
 
                     return;
@@ -113,118 +112,121 @@ final class RunSslCheckJob implements ShouldQueue
                         $alertRepository,
                         $site,
                         'SSL requiere atencion',
-                        'No fue posible abrir conexion SSL: ' . ($errstr !== '' ? $errstr : 'respuesta invalida'),
+                        'No fue posible abrir conexion SSL: '.($errstr !== '' ? $errstr : 'respuesta invalida'),
                         'high',
-                        'ssl.expiring.soon'
+                        'ssl.expiring.soon',
                     );
+
                     return;
                 }
 
-            $params = stream_context_get_params($client);
-            fclose($client);
+                $params = stream_context_get_params($client);
+                fclose($client);
 
-            $certificateResource = $params['options']['ssl']['peer_certificate'] ?? null;
+                $certificateResource = $params['options']['ssl']['peer_certificate'] ?? null;
 
-            if ($certificateResource === null) {
-                $this->openSslAlertIfNeeded(
-                    $alertRepository,
-                    $site,
-                    'SSL requiere atencion',
-                    'No se pudo obtener certificado SSL remoto.',
-                    'high',
-                    'ssl.expiring.soon'
-                );
-                return;
-            }
+                if ($certificateResource === null) {
+                    $this->openSslAlertIfNeeded(
+                        $alertRepository,
+                        $site,
+                        'SSL requiere atencion',
+                        'No se pudo obtener certificado SSL remoto.',
+                        'high',
+                        'ssl.expiring.soon',
+                    );
 
-            $parsedCert = openssl_x509_parse($certificateResource, false);
-            $fingerprint = openssl_x509_fingerprint($certificateResource, 'sha256');
+                    return;
+                }
 
-            if (! is_array($parsedCert) || $fingerprint === false) {
-                $this->openSslAlertIfNeeded(
-                    $alertRepository,
-                    $site,
-                    'SSL requiere atencion',
-                    'No se pudo parsear certificado SSL.',
-                    'high',
-                    'ssl.expiring.soon'
-                );
-                return;
-            }
+                $parsedCert = openssl_x509_parse($certificateResource, false);
+                $fingerprint = openssl_x509_fingerprint($certificateResource, 'sha256');
 
-            $validFrom = isset($parsedCert['validFrom_time_t'])
-                ? CarbonImmutable::createFromTimestampUTC((int) $parsedCert['validFrom_time_t'])
-                : null;
+                if (! is_array($parsedCert) || $fingerprint === false) {
+                    $this->openSslAlertIfNeeded(
+                        $alertRepository,
+                        $site,
+                        'SSL requiere atencion',
+                        'No se pudo parsear certificado SSL.',
+                        'high',
+                        'ssl.expiring.soon',
+                    );
 
-            $validUntil = isset($parsedCert['validTo_time_t'])
-                ? CarbonImmutable::createFromTimestampUTC((int) $parsedCert['validTo_time_t'])
-                : null;
+                    return;
+                }
 
-            $daysRemaining = $validUntil !== null
-                ? (int) now()->diffInDays($validUntil, false)
-                : null;
-            $isExpired = $daysRemaining !== null ? $daysRemaining < 0 : false;
+                $validFrom = isset($parsedCert['validFrom_time_t'])
+                    ? CarbonImmutable::createFromTimestampUTC((int) $parsedCert['validFrom_time_t'])
+                    : null;
 
-            SslCertificate::create([
-                'site_id' => $site->id,
-                'common_name' => (string) ($parsedCert['subject']['CN'] ?? ''),
-                'issuer' => (string) ($parsedCert['issuer']['CN'] ?? ''),
-                'issuer_org' => (string) ($parsedCert['issuer']['O'] ?? ''),
-                'valid_from' => $validFrom,
-                'valid_until' => $validUntil,
-                'days_remaining' => $daysRemaining,
-                'is_valid' => ! $isExpired,
-                'is_expired' => $isExpired,
-                'algorithm' => (string) ($parsedCert['signatureTypeLN'] ?? ''),
-                'key_size' => isset($parsedCert['bits']) ? (int) $parsedCert['bits'] : null,
-                'signature_alg' => (string) ($parsedCert['signatureTypeSN'] ?? ''),
-                'san_domains' => $this->extractSanDomains($parsedCert),
-                'fingerprint_sha256' => $fingerprint,
-                'last_checked_at' => now(),
-            ]);
+                $validUntil = isset($parsedCert['validTo_time_t'])
+                    ? CarbonImmutable::createFromTimestampUTC((int) $parsedCert['validTo_time_t'])
+                    : null;
 
-            $warningDays = (int) env('SENTINEL_SSL_ALERT_DAYS_WARNING', 30);
-            $criticalDays = (int) env('SENTINEL_SSL_ALERT_DAYS_CRITICAL', 7);
+                $daysRemaining = $validUntil !== null
+                    ? (int) now()->diffInDays($validUntil, false)
+                    : null;
+                $isExpired = $daysRemaining !== null ? $daysRemaining < 0 : false;
 
-            if ($daysRemaining !== null && $daysRemaining < 0) {
-                $this->openSslAlertIfNeeded(
-                    $alertRepository,
-                    $site,
-                    'SSL expirado',
-                    sprintf('Certificado SSL expirado hace %d dias.', abs($daysRemaining)),
-                    'critical',
-                    'ssl.expired',
-                    abs($daysRemaining)
-                );
-            } elseif ($daysRemaining !== null && $daysRemaining <= $criticalDays) {
-                $this->openSslAlertIfNeeded(
-                    $alertRepository,
-                    $site,
-                    'SSL en estado critico',
-                    sprintf('Certificado SSL critico: %d dias restantes.', $daysRemaining),
-                    'critical',
-                    'ssl.expiring.soon',
-                    $daysRemaining
-                );
-            } elseif ($daysRemaining !== null && $daysRemaining <= $warningDays) {
-                $this->openSslAlertIfNeeded(
-                    $alertRepository,
-                    $site,
-                    'SSL por vencer',
-                    sprintf('Certificado SSL en aviso: %d dias restantes.', $daysRemaining),
-                    'high',
-                    'ssl.expiring.soon',
-                    $daysRemaining
-                );
-            }
+                SslCertificate::create([
+                    'site_id' => $site->id,
+                    'common_name' => (string) ($parsedCert['subject']['CN'] ?? ''),
+                    'issuer' => (string) ($parsedCert['issuer']['CN'] ?? ''),
+                    'issuer_org' => (string) ($parsedCert['issuer']['O'] ?? ''),
+                    'valid_from' => $validFrom,
+                    'valid_until' => $validUntil,
+                    'days_remaining' => $daysRemaining,
+                    'is_valid' => ! $isExpired,
+                    'is_expired' => $isExpired,
+                    'algorithm' => (string) ($parsedCert['signatureTypeLN'] ?? ''),
+                    'key_size' => isset($parsedCert['bits']) ? (int) $parsedCert['bits'] : null,
+                    'signature_alg' => (string) ($parsedCert['signatureTypeSN'] ?? ''),
+                    'san_domains' => $this->extractSanDomains($parsedCert),
+                    'fingerprint_sha256' => $fingerprint,
+                    'last_checked_at' => now(),
+                ]);
+
+                $warningDays = (int) env('SENTINEL_SSL_ALERT_DAYS_WARNING', 30);
+                $criticalDays = (int) env('SENTINEL_SSL_ALERT_DAYS_CRITICAL', 7);
+
+                if ($daysRemaining !== null && $daysRemaining < 0) {
+                    $this->openSslAlertIfNeeded(
+                        $alertRepository,
+                        $site,
+                        'SSL expirado',
+                        sprintf('Certificado SSL expirado hace %d dias.', abs($daysRemaining)),
+                        'critical',
+                        'ssl.expired',
+                        abs($daysRemaining),
+                    );
+                } elseif ($daysRemaining !== null && $daysRemaining <= $criticalDays) {
+                    $this->openSslAlertIfNeeded(
+                        $alertRepository,
+                        $site,
+                        'SSL en estado critico',
+                        sprintf('Certificado SSL critico: %d dias restantes.', $daysRemaining),
+                        'critical',
+                        'ssl.expiring.soon',
+                        $daysRemaining,
+                    );
+                } elseif ($daysRemaining !== null && $daysRemaining <= $warningDays) {
+                    $this->openSslAlertIfNeeded(
+                        $alertRepository,
+                        $site,
+                        'SSL por vencer',
+                        sprintf('Certificado SSL en aviso: %d dias restantes.', $daysRemaining),
+                        'high',
+                        'ssl.expiring.soon',
+                        $daysRemaining,
+                    );
+                }
             } catch (\Throwable $exception) {
                 $this->openSslAlertIfNeeded(
                     $alertRepository,
                     $site,
                     'SSL requiere atencion',
-                    'Error en escaneo SSL: ' . $exception->getMessage(),
+                    'Error en escaneo SSL: '.$exception->getMessage(),
                     'high',
-                    'ssl.expiring.soon'
+                    'ssl.expiring.soon',
                 );
 
                 if (is_string($this->massScanRunId) && $this->massScanRunId !== '') {
@@ -271,11 +273,10 @@ final class RunSslCheckJob implements ShouldQueue
         string $severity,
         string $event,
         int $daysContext = 0,
-    ): void
-    {
+    ): void {
         $openAlerts = $alertRepository->openForSite($site->id);
         $matchingOpenAlerts = $openAlerts->filter(
-            fn ($alert) => data_get($alert->context, 'event') === $event
+            fn ($alert) => data_get($alert->context, 'event') === $event,
         );
 
         if ($matchingOpenAlerts->isNotEmpty()) {

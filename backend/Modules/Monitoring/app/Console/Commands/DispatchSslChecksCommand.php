@@ -43,7 +43,7 @@ final class DispatchSslChecksCommand extends Command
             'Despachados %d jobs SSL en %d lote(s) de hasta %d sitio(s).',
             $dispatched,
             (int) ceil(max(1, $sites->count()) / $chunkSize),
-            $chunkSize
+            $chunkSize,
         ));
 
         return self::SUCCESS;

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Modules\Reports\Http\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -9,9 +11,7 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class ReportsController extends Controller
 {
-    public function __construct(private readonly ExecutiveReportService $reportService)
-    {
-    }
+    public function __construct(private readonly ExecutiveReportService $reportService) {}
 
     /**
      * Display a listing of the resource.

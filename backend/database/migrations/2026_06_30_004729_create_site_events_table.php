@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -15,15 +17,15 @@ return new class extends Migration
             $table->id();
             $table->foreignId('site_id')->constrained('sites')->cascadeOnDelete();
             $table->string('event_type', 100)
-                  ->comment('ssl_renewed/site_down/site_up/php_updated/cms_updated/vuln_found/vuln_resolved/scan_completed/manual_note');
+                ->comment('ssl_renewed/site_down/site_up/php_updated/cms_updated/vuln_found/vuln_resolved/scan_completed/manual_note');
             $table->string('title', 500);
             $table->text('description')->nullable();
             $table->string('severity', 20)->default('info')->comment('info/warning/error/critical');
             $table->json('metadata')->default('{}');
             $table->timestampTz('occurred_at');
             $table->foreignId('created_by')->nullable()
-                  ->constrained('users')
-                  ->nullOnDelete();
+                ->constrained('users')
+                ->nullOnDelete();
             $table->timestampTz('created_at')->nullable();
 
             $table->index(['site_id', 'occurred_at']);
@@ -39,4 +41,3 @@ return new class extends Migration
         Schema::dropIfExists('site_events');
     }
 };
-

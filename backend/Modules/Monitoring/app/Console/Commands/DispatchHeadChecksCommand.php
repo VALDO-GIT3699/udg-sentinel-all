@@ -25,10 +25,12 @@ final class DispatchHeadChecksCommand extends Command
 
             if ($prioritySiteId <= 0) {
                 $this->warn('Despacho general en pausa temporal por reescaneo puntual.');
+
                 return self::SUCCESS;
             }
 
             $prioritySite = $siteRepository->findById($prioritySiteId);
+
             if ($prioritySite !== null && $prioritySite->is_active && $prioritySite->is_monitored) {
                 $this->dispatchMonitoringJob(RunHeadCheckJob::class, (int) $prioritySite->id);
                 $this->line(sprintf('Site prioritario #%d despachado para HEAD check.', (int) $prioritySite->id));
@@ -66,7 +68,7 @@ final class DispatchHeadChecksCommand extends Command
             'Despachados %d jobs de uptime en %d lote(s) de hasta %d sitio(s).',
             $dispatched,
             (int) ceil(max(1, $sites->count()) / $chunkSize),
-            $chunkSize
+            $chunkSize,
         ));
 
         return self::SUCCESS;

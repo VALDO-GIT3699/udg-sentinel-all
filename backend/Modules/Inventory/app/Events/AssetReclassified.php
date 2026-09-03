@@ -13,6 +13,5 @@ final readonly class AssetReclassified
         public string $newType,
         public string $newRole,
         public string $classifiedAt,
-    ) {
-    }
+    ) {}
 }

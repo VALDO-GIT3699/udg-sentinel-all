@@ -11,11 +11,9 @@ final class AssetClassificationEngine
     private const RULE_ENGINE_VERSION = 'rule-engine-v1';
 
     /**
-     * @param iterable<int, AssetClassificationRuleInterface> $rules
+     * @param  iterable<int, AssetClassificationRuleInterface>  $rules
      */
-    public function __construct(private readonly iterable $rules)
-    {
-    }
+    public function __construct(private readonly iterable $rules) {}
 
     public function classify(AssetFingerprint $fingerprint): AssetClassificationResult
     {
@@ -96,8 +94,8 @@ final class AssetClassificationEngine
     }
 
     /**
-     * @param array<string, float> $typeScores
-     * @param array<string, float> $roleScores
+     * @param  array<string, float>  $typeScores
+     * @param  array<string, float>  $roleScores
      */
     private function calculateConfidence(array $typeScores, array $roleScores, int $evidenceCount): int
     {

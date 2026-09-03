@@ -21,8 +21,7 @@ final class SiteDownNotification extends Notification
         private readonly string $detectedAtIso,
         private readonly int $alertId,
         private readonly string $incidentMessage,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<int, string>
@@ -34,7 +33,7 @@ final class SiteDownNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage())
+        return (new MailMessage)
             ->subject(sprintf('[UDG Sentinel][%s] Incidente critico en %s', mb_strtoupper($this->severity), $this->siteName))
             ->view('emails.monitoring.site-down-notification', [
                 'siteName' => $this->siteName,

@@ -25,7 +25,17 @@ final class EnsureLocalMonitoringUser
         }
 
         $adminRole = Role::findOrCreate(MonitoringPermissionMatrix::ADMIN_ROLE, 'web');
-        $adminRole->syncPermissions(MonitoringPermissionMatrix::adminPermissions());
+
+        $targetPermissions = MonitoringPermissionMatrix::adminPermissions();
+        sort($targetPermissions);
+        $currentPermissions = $adminRole->permissions()->pluck('name')->all();
+        sort($currentPermissions);
+
+        // syncPermissions() re-inserta todos los pivotes aunque ya coincidan, lo que
+        // choca contra la restriccion unica cuando no hay cambios reales que sincronizar.
+        if ($targetPermissions !== $currentPermissions) {
+            $adminRole->syncPermissions($targetPermissions);
+        }
 
         $user = User::query()->firstOrCreate(
             ['email' => self::EMAIL],

@@ -4,6 +4,10 @@ LABEL maintainer="Coordinación de Tecnologías de la Información — UDG"
 LABEL description="UDG Sentinel — PHP 8.2 FPM"
 
 # ── Dependencias del sistema ──────────────────
+# postgresql16-client trae pg_dump/psql -version 16 para que coincida con
+# postgres:16-alpine en docker-compose.prod.yml-, usado por
+# monitoring:backup-database. Antes solo estaban los headers de compilacion
+# (postgresql-dev), no el cliente CLI.
 RUN apk add --no-cache \
     git \
     curl \
@@ -14,6 +18,7 @@ RUN apk add --no-cache \
     zip \
     unzip \
     postgresql-dev \
+    postgresql16-client \
     oniguruma-dev \
     icu-dev \
     freetype-dev \

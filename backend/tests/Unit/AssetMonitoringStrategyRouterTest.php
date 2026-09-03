@@ -12,11 +12,9 @@ use Tests\TestCase;
 final class TestApiStrategy implements AssetMonitoringStrategyInterface
 {
     /**
-     * @param array<int, string> $dispatched
+     * @param  array<int, string>  $dispatched
      */
-    public function __construct(private array &$dispatched)
-    {
-    }
+    public function __construct(private array &$dispatched) {}
 
     public function key(): string
     {
@@ -30,18 +28,16 @@ final class TestApiStrategy implements AssetMonitoringStrategyInterface
 
     public function dispatch(Site $site): void
     {
-        $this->dispatched[] = 'api:' . $site->id;
+        $this->dispatched[] = 'api:'.$site->id;
     }
 }
 
 final class TestFallbackStrategy implements AssetMonitoringStrategyInterface
 {
     /**
-     * @param array<int, string> $dispatched
+     * @param  array<int, string>  $dispatched
      */
-    public function __construct(private array &$dispatched)
-    {
-    }
+    public function __construct(private array &$dispatched) {}
 
     public function key(): string
     {
@@ -55,7 +51,7 @@ final class TestFallbackStrategy implements AssetMonitoringStrategyInterface
 
     public function dispatch(Site $site): void
     {
-        $this->dispatched[] = 'fallback:' . $site->id;
+        $this->dispatched[] = 'fallback:'.$site->id;
     }
 }
 
@@ -70,7 +66,7 @@ final class AssetMonitoringStrategyRouterTest extends TestCase
             new TestFallbackStrategy($dispatched),
         ]);
 
-        $site = new Site();
+        $site = new Site;
         $site->id = 10;
         $site->asset_type = 'rest_api';
 

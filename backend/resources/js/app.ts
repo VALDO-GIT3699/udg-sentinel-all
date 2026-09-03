@@ -10,7 +10,7 @@ import type { DefineComponent } from 'vue'
 import { InertiaProgress } from '@inertiajs/progress'
 
 InertiaProgress.init({
-  color: '#3B82F6',
+  color: '#0891b2',
   includeCSS: true,
   showSpinner: false,
   delay: 150,

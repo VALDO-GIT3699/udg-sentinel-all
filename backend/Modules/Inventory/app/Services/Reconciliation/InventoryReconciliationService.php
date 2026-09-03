@@ -13,12 +13,13 @@ use Modules\Inventory\Models\InventoryReconciliationRow;
 final class InventoryReconciliationService
 {
     private InventorySourceParser $parser;
+
     private InventoryReconciler $reconciler;
 
     public function __construct(?InventorySourceParser $parser = null, ?InventoryReconciler $reconciler = null)
     {
         $this->parser = $parser ?? InventorySourceParser::default();
-        $this->reconciler = $reconciler ?? new InventoryReconciler();
+        $this->reconciler = $reconciler ?? new InventoryReconciler;
     }
 
     public function importAndAnalyze(UploadedFile $file, ?int $uploadedBy = null): InventoryReconciliationBatch
@@ -81,6 +82,7 @@ final class InventoryReconciliationService
             ]);
 
             $summary['rows'][] = $sourceRow;
+
             if (($reconciliation['normalized_domain'] ?? null) !== null) {
                 $summary['site_keys'][] = $reconciliation['normalized_domain'];
             }
@@ -90,6 +92,7 @@ final class InventoryReconciliationService
 
         $currentSourceKeys = array_values(array_unique(array_filter($summary['site_keys'])));
         $obsoleteSites = 0;
+
         if ($currentSourceKeys !== []) {
             $obsoleteSites = Site::query()
                 ->whereNotIn('domain', $currentSourceKeys)

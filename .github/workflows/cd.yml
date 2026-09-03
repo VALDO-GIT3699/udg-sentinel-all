@@ -1,1 +1,107 @@
-﻿
+name: CD
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: backend
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/udg-sentinel
+
+jobs:
+  # Nunca se construye ni se publica una imagen sin que la suite pase primero
+  # -mismo gate que ci.yml, repetido aqui a proposito para que este workflow
+  # no dependa de la ejecucion de otro (workflow_run entre workflows
+  # separados es fragil de encadenar de forma confiable).
+  test:
+    name: Tests antes de publicar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: pdo, pdo_sqlite, pdo_pgsql, pgsql, mbstring, exif, pcntl, bcmath, gd, zip, intl, opcache, redis
+          coverage: none
+          tools: composer:v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: backend/vendor
+          key: composer-8.2-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-8.2-
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: npm ci
+      - run: npm run build
+      - run: cp .env.example .env && php artisan key:generate --ansi
+      - run: php artisan test
+
+  build-and-push:
+    name: Construir y publicar imagen
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # "latest" solo se mueve con pushes a main; un tag "vX.Y.Z" publica
+      # ademas esa version fija, para poder anclar APP_VERSION en
+      # docker-compose.prod.yml a un release concreto en vez de "latest".
+      - name: Compute image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=sha,format=short
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infrastructure/docker/php/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Paso de despliegue: DESACTIVADO a proposito. Conectarse por SSH al
+  # servidor real y correr "docker compose pull && up -d" requiere secretos
+  # (host, usuario, llave privada) que no existen en este repositorio y que
+  # nadie debe generar sin que el equipo de infraestructura lo apruebe.
+  # Cuando esos secretos existan en Settings → Secrets, agregar un job aqui
+  # con: needs: build-and-push, y un step que use appleboy/ssh-action (u
+  # otro) para ejecutar el pull+up en el servidor. Mientras tanto, el
+  # despliegue tras un push a main es: en el servidor,
+  #   docker compose -f infrastructure/docker/docker-compose.prod.yml pull
+  #   docker compose -f infrastructure/docker/docker-compose.prod.yml up -d

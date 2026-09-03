@@ -31,11 +31,11 @@ final class CmsDetail extends Model
     ];
 
     protected $casts = [
-        'php_is_vulnerable'   => 'boolean',
-        'modules_count'       => 'integer',
-        'has_updates'         => 'boolean',
+        'php_is_vulnerable' => 'boolean',
+        'modules_count' => 'integer',
+        'has_updates' => 'boolean',
         'has_security_updates' => 'boolean',
-        'last_scanned_at'     => 'immutable_datetime',
+        'last_scanned_at' => 'immutable_datetime',
     ];
 
     // -----------------------------------------------------------------

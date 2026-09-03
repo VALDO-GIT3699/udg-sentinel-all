@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 final class Server extends Model
 {
@@ -30,11 +32,11 @@ final class Server extends Model
     ];
 
     protected $casts = [
-        'ssh_port'      => 'integer',
+        'ssh_port' => 'integer',
         'is_accessible' => 'boolean',
-        'cpu_cores'     => 'integer',
-        'ram_gb'        => 'float',
-        'disk_gb'       => 'float',
+        'cpu_cores' => 'integer',
+        'ram_gb' => 'float',
+        'disk_gb' => 'float',
     ];
 
     // -----------------------------------------------------------------
@@ -52,7 +54,7 @@ final class Server extends Model
         return $this->hasMany(ServerMetric::class);
     }
 
-    public function latestMetric(): \Illuminate\Database\Eloquent\Relations\HasOne
+    public function latestMetric(): HasOne
     {
         return $this->hasOne(ServerMetric::class)->latestOfMany('recorded_at');
     }
@@ -62,10 +64,10 @@ final class Server extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<Server> $query
-     * @return \Illuminate\Database\Eloquent\Builder<Server>
+     * @param  Builder<Server>  $query
+     * @return Builder<Server>
      */
-    public function scopeAccessible(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeAccessible(Builder $query): Builder
     {
         return $query->where('is_accessible', true);
     }

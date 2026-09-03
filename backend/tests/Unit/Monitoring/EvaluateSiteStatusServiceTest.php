@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Monitoring;
 
-use App\Models\Alert;
-use App\Models\SiteGroup;
 use App\Contracts\Repositories\AlertRepositoryInterface;
 use App\Contracts\Repositories\SiteCheckRepositoryInterface;
 use App\Contracts\Repositories\SiteRepositoryInterface;
+use App\Models\Alert;
 use App\Models\Site;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Models\SiteGroup;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Monitoring\Services\EvaluateSiteStatusService;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -38,7 +38,7 @@ final class EvaluateSiteStatusServiceTest extends TestCase
 
         $service = new EvaluateSiteStatusService($siteCheckRepository, $siteRepository, $alertRepository);
 
-        $site = new Site();
+        $site = new Site;
         $site->id = 10;
         $site->priority = 1;
         $site->current_status = 'down';
@@ -67,7 +67,7 @@ final class EvaluateSiteStatusServiceTest extends TestCase
 
         $service = new EvaluateSiteStatusService($siteCheckRepository, $siteRepository, $alertRepository);
 
-        $site = new Site();
+        $site = new Site;
         $site->id = 15;
         $site->priority = 2;
         $site->current_status = 'degraded';

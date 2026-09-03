@@ -25,6 +25,11 @@ final class MonitoringPermissionMatrix
             'monitoring.manage_alerts',
             'monitoring.manage_settings',
             'monitoring.view_horizon',
+            'monitoring.delete_sites',
+            'monitoring.run_mass_scan',
+            'monitoring.manage_comments',
+            'monitoring.manage_users',
+            'monitoring.view_audit_log',
         ];
     }
 
@@ -47,6 +52,32 @@ final class MonitoringPermissionMatrix
             'monitoring.manage_sites',
             'monitoring.manage_groups',
             'monitoring.manage_alerts',
+            'monitoring.run_mass_scan',
+            'monitoring.manage_comments',
+        ];
+    }
+
+    /**
+     * Etiquetas en español para el panel de administración: permite mostrar
+     * checkboxes entendibles sin que el admin tenga que leer el slug tecnico.
+     *
+     * @return array<string, string>
+     */
+    public static function permissionLabels(): array
+    {
+        return [
+            'monitoring.view_dashboard' => 'Ver el dashboard',
+            'monitoring.view_site_detail' => 'Ver el detalle de cada sitio',
+            'monitoring.manage_sites' => 'Agregar y editar sitios',
+            'monitoring.manage_groups' => 'Administrar grupos de sitios',
+            'monitoring.manage_alerts' => 'Administrar alertas',
+            'monitoring.manage_settings' => 'Administrar configuración del sistema',
+            'monitoring.view_horizon' => 'Ver colas de trabajo (Horizon)',
+            'monitoring.delete_sites' => 'Eliminar sitios',
+            'monitoring.run_mass_scan' => 'Ejecutar escaneo masivo',
+            'monitoring.manage_comments' => 'Agregar, editar y eliminar comentarios',
+            'monitoring.manage_users' => 'Administrar usuarios y permisos',
+            'monitoring.view_audit_log' => 'Ver el registro de auditoría',
         ];
     }
 
@@ -59,5 +90,33 @@ final class MonitoringPermissionMatrix
             'monitoring.view_dashboard',
             'monitoring.view_site_detail',
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function roleLabels(): array
+    {
+        return [
+            self::ADMIN_ROLE => 'Administrador',
+            self::OPERATOR_ROLE => 'Operador',
+            self::VIEWER_ROLE => 'Visualizador',
+        ];
+    }
+
+    /**
+     * Preset de permisos por rol, usado como punto de partida al crear un
+     * usuario (el admin puede personalizarlo por-usuario despues).
+     *
+     * @return list<string>
+     */
+    public static function defaultPermissionsForRole(string $role): array
+    {
+        return match ($role) {
+            self::ADMIN_ROLE => self::adminPermissions(),
+            self::OPERATOR_ROLE => self::operatorPermissions(),
+            self::VIEWER_ROLE => self::viewerPermissions(),
+            default => [],
+        };
     }
 }

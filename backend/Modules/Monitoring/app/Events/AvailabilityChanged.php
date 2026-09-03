@@ -15,6 +15,5 @@ final readonly class AvailabilityChanged
         public string $before,
         public string $after,
         public string $changedAt,
-    ) {
-    }
+    ) {}
 }

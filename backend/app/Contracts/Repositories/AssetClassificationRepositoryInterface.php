@@ -12,7 +12,7 @@ interface AssetClassificationRepositoryInterface
     public function latestForSite(int $siteId): ?AssetClassification;
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public function createForSite(Site $site, array $data): AssetClassification;
 

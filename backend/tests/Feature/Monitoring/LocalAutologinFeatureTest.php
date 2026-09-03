@@ -15,18 +15,6 @@ final class LocalAutologinFeatureTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        config([
-            'activitylog.enabled' => false,
-            'activitylog.default_log_name' => 'testing',
-        ]);
-
-        $this->app['env'] = 'local';
-    }
-
     #[Test]
     public function local_autologin_creates_the_monitoring_user_on_a_clean_database_and_redirects_successfully(): void
     {
@@ -53,5 +41,17 @@ final class LocalAutologinFeatureTest extends TestCase
         ]);
 
         $dashboardResponse->assertOk();
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'activitylog.enabled' => false,
+            'activitylog.default_log_name' => 'testing',
+        ]);
+
+        $this->app['env'] = 'local';
     }
 }

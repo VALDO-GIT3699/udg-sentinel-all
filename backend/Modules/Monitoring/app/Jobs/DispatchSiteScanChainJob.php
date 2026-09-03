@@ -11,7 +11,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Bus;
 
 final class DispatchSiteScanChainJob implements ShouldQueue
 {
@@ -38,21 +37,11 @@ final class DispatchSiteScanChainJob implements ShouldQueue
             ->value('trigger_mode');
 
         if (is_string($triggerMode) && in_array($triggerMode, ['manual_selected', 'manual_single'], true)) {
-            RunHeadCheckJob::dispatchSync($this->siteId, $this->runId, $this->forceScan);
-            RunSslCheckJob::dispatchSync($this->siteId, $this->runId, $this->forceScan);
-            RunSecurityHeadersCheckJob::dispatchSync($this->siteId, $this->runId, $this->forceScan);
-            RunTechnologyScanJob::dispatchSync($this->siteId, $this->runId, $this->forceScan);
-            RunBrokenLinksCheckJob::dispatchSync($this->siteId, $this->runId, $this->forceScan);
+            RunSiteInspectionJob::dispatch($this->siteId, $this->runId, $this->forceScan);
 
             return;
         }
 
-        Bus::chain([
-            new RunHeadCheckJob($this->siteId, $this->runId, $this->forceScan),
-            new RunSslCheckJob($this->siteId, $this->runId, $this->forceScan),
-            new RunSecurityHeadersCheckJob($this->siteId, $this->runId, $this->forceScan),
-            new RunTechnologyScanJob($this->siteId, $this->runId, $this->forceScan),
-            new RunBrokenLinksCheckJob($this->siteId, $this->runId, $this->forceScan),
-        ])->dispatch();
+        RunSiteInspectionJob::dispatch($this->siteId, $this->runId, $this->forceScan);
     }
 }

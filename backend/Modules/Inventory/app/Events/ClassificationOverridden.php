@@ -13,6 +13,5 @@ final readonly class ClassificationOverridden
         public string $reason,
         public ?int $userId,
         public string $overriddenAt,
-    ) {
-    }
+    ) {}
 }

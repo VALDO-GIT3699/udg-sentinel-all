@@ -26,22 +26,22 @@ final class DashboardService
     public function getMetrics(): array
     {
         return Cache::remember('dashboard:metrics', now()->addMinutes(1), function (): array {
-            $statusCounts  = $this->siteRepo->countByStatus();
-            $totalSites    = array_sum($statusCounts);
-            $openAlerts    = $this->alertRepo->countOpen();
+            $statusCounts = $this->siteRepo->countByStatus();
+            $totalSites = array_sum($statusCounts);
+            $openAlerts = $this->alertRepo->countOpen();
             $criticalAlerts = $this->alertRepo->countCritical();
 
             $avgUptime = $this->computeAverageUptime24h();
 
             return [
-                'total_sites'      => $totalSites,
-                'sites_up'         => $statusCounts['up'] ?? 0,
-                'sites_down'       => $statusCounts['down'] ?? 0,
-                'sites_degraded'   => $statusCounts['degraded'] ?? 0,
-                'sites_unknown'    => $statusCounts['unknown'] ?? 0,
-                'open_alerts'      => $openAlerts,
-                'critical_alerts'  => $criticalAlerts,
-                'avg_uptime_24h'   => $avgUptime,
+                'total_sites' => $totalSites,
+                'sites_up' => $statusCounts['up'] ?? 0,
+                'sites_down' => $statusCounts['down'] ?? 0,
+                'sites_degraded' => $statusCounts['degraded'] ?? 0,
+                'sites_unknown' => $statusCounts['unknown'] ?? 0,
+                'open_alerts' => $openAlerts,
+                'critical_alerts' => $criticalAlerts,
+                'avg_uptime_24h' => $avgUptime,
             ];
         });
     }
@@ -53,20 +53,20 @@ final class DashboardService
      */
     public function getRecentIssues(): array
     {
-        $down     = $this->siteRepo->getDown();
+        $down = $this->siteRepo->getDown();
         $degraded = $this->siteRepo->getDegraded();
 
         return $down->merge($degraded)
             ->sortBy('priority')
             ->take(10)
             ->map(fn (Site $site): array => [
-                'id'            => $site->id,
-                'name'          => $site->name,
-                'domain'        => $site->domain,
-                'status'        => $site->current_status,
-                'score'         => $site->current_score,
-                'last_checked'  => $site->last_checked_at?->toISOString(),
-                'group'         => $site->siteGroup?->name,
+                'id' => $site->id,
+                'name' => $site->name,
+                'domain' => $site->domain,
+                'status' => $site->current_status,
+                'score' => $site->current_score,
+                'last_checked' => $site->last_checked_at?->toISOString(),
+                'group' => $site->siteGroup?->name,
             ])
             ->values()
             ->all();
@@ -91,7 +91,7 @@ final class DashboardService
         }
 
         $total = $monitored->sum(
-            fn (Site $site): float => $this->checkRepo->uptimePercentage($site->id, 24)
+            fn (Site $site): float => $this->checkRepo->uptimePercentage($site->id, 24),
         );
 
         return round($total / $monitored->count(), 2);

@@ -23,8 +23,7 @@ final class SiteRecovered implements ShouldBroadcastNow
         public readonly string $siteName,
         public readonly string $url,
         public readonly string $recoveredAt,
-    ) {
-    }
+    ) {}
 
     public function broadcastOn(): Channel
     {
@@ -42,9 +41,9 @@ final class SiteRecovered implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return [
-            'siteId'      => $this->siteId,
-            'siteName'    => $this->siteName,
-            'url'         => $this->url,
+            'siteId' => $this->siteId,
+            'siteName' => $this->siteName,
+            'url' => $this->url,
             'recoveredAt' => $this->recoveredAt,
         ];
     }

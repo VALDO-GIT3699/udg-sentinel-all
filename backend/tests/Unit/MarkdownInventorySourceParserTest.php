@@ -11,7 +11,7 @@ final class MarkdownInventorySourceParserTest extends TestCase
 {
     public function test_it_parses_plain_text_row_with_no_tiene_marker(): void
     {
-        $parser = new MarkdownInventorySourceParser();
+        $parser = new MarkdownInventorySourceParser;
         $file = $this->createTempMarkdownFile(<<<'MD'
 ABC CGTI Sitio Demo https://demo.udg.mx Si WordPress No tiene Pendiente Observacion inicial
 MD);
@@ -27,7 +27,7 @@ MD);
 
     public function test_it_preserves_url_path_and_ip_when_present(): void
     {
-        $parser = new MarkdownInventorySourceParser();
+        $parser = new MarkdownInventorySourceParser;
         $file = $this->createTempMarkdownFile(<<<'MD'
 ABC CGTI Portal Servicios https://portal.udg.mx/apps/ingreso Si Joomla 148.202.10.20 Activo Monitoreo normal
 MD);
@@ -42,7 +42,7 @@ MD);
 
     public function test_it_ignores_non_inventory_pipe_tables(): void
     {
-        $parser = new MarkdownInventorySourceParser();
+        $parser = new MarkdownInventorySourceParser;
         $file = $this->createTempMarkdownFile(<<<'MD'
 | Etiqueta | Valor |
 | --- | --- |
@@ -56,7 +56,7 @@ MD);
 
     public function test_it_does_not_force_unknown_status_token(): void
     {
-        $parser = new MarkdownInventorySourceParser();
+        $parser = new MarkdownInventorySourceParser;
         $file = $this->createTempMarkdownFile(<<<'MD'
 ABC CGTI Portal Transparencia https://transparencia.udg.mx Si Drupal 148.202.10.21 RevisarPorArea Pendiente revision manual
 MD);

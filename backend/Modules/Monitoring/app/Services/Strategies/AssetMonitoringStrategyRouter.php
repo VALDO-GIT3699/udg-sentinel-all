@@ -14,7 +14,7 @@ final class AssetMonitoringStrategyRouter
     private array $strategies;
 
     /**
-     * @param iterable<int, AssetMonitoringStrategyInterface> $strategies
+     * @param  iterable<int, AssetMonitoringStrategyInterface>  $strategies
      */
     public function __construct(iterable $strategies)
     {

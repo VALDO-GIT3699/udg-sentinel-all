@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -23,9 +24,9 @@ final class AccessLog extends Model
     ];
 
     protected $casts = [
-        'created_at'    => 'immutable_datetime',
+        'created_at' => 'immutable_datetime',
         'response_code' => 'integer',
-        'duration_ms'   => 'integer',
+        'duration_ms' => 'integer',
     ];
 
     // -----------------------------------------------------------------
@@ -42,30 +43,28 @@ final class AccessLog extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<AccessLog> $query
-     * @return \Illuminate\Database\Eloquent\Builder<AccessLog>
+     * @param  Builder<AccessLog>  $query
+     * @return Builder<AccessLog>
      */
-    public function scopeFailedLogins(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeFailedLogins(Builder $query): Builder
     {
         return $query->where('action', 'failed_login');
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<AccessLog> $query
-     * @param string $ip
-     * @return \Illuminate\Database\Eloquent\Builder<AccessLog>
+     * @param  Builder<AccessLog>  $query
+     * @return Builder<AccessLog>
      */
-    public function scopeFromIp(\Illuminate\Database\Eloquent\Builder $query, string $ip): \Illuminate\Database\Eloquent\Builder
+    public function scopeFromIp(Builder $query, string $ip): Builder
     {
         return $query->where('ip_address', $ip);
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<AccessLog> $query
-     * @param int $minutes
-     * @return \Illuminate\Database\Eloquent\Builder<AccessLog>
+     * @param  Builder<AccessLog>  $query
+     * @return Builder<AccessLog>
      */
-    public function scopeInLastMinutes(\Illuminate\Database\Eloquent\Builder $query, int $minutes): \Illuminate\Database\Eloquent\Builder
+    public function scopeInLastMinutes(Builder $query, int $minutes): Builder
     {
         return $query->where('created_at', '>=', now()->subMinutes($minutes));
     }

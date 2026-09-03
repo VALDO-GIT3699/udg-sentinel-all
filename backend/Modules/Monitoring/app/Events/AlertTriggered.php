@@ -16,6 +16,5 @@ final readonly class AlertTriggered
         public string $severity,
         public string $event,
         public string $triggeredAt,
-    ) {
-    }
+    ) {}
 }

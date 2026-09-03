@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -40,7 +41,7 @@ final class NotificationChannel extends Model
     public function setConfigAttribute(array $value): void
     {
         $this->attributes['config'] = Crypt::encryptString(
-            json_encode($value, JSON_THROW_ON_ERROR)
+            json_encode($value, JSON_THROW_ON_ERROR),
         );
     }
 
@@ -58,20 +59,19 @@ final class NotificationChannel extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<NotificationChannel> $query
-     * @return \Illuminate\Database\Eloquent\Builder<NotificationChannel>
+     * @param  Builder<NotificationChannel>  $query
+     * @return Builder<NotificationChannel>
      */
-    public function scopeActive(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<NotificationChannel> $query
-     * @param string $type
-     * @return \Illuminate\Database\Eloquent\Builder<NotificationChannel>
+     * @param  Builder<NotificationChannel>  $query
+     * @return Builder<NotificationChannel>
      */
-    public function scopeOfType(\Illuminate\Database\Eloquent\Builder $query, string $type): \Illuminate\Database\Eloquent\Builder
+    public function scopeOfType(Builder $query, string $type): Builder
     {
         return $query->where('type', $type);
     }

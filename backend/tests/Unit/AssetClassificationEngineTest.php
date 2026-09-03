@@ -17,10 +17,10 @@ final class AssetClassificationEngineTest extends TestCase
     public function test_it_classifies_moodle_asset_as_web_application_lms(): void
     {
         $engine = new AssetClassificationEngine([
-            new TechnologyFingerprintRule(),
-            new ContentSignatureRule(),
-            new DnsSslRule(),
-            new HostnameHeuristicRule(),
+            new TechnologyFingerprintRule,
+            new ContentSignatureRule,
+            new DnsSslRule,
+            new HostnameHeuristicRule,
         ]);
 
         $fingerprint = new AssetFingerprint(

@@ -26,10 +26,12 @@ final class DispatchAssetMonitoringCommand extends Command
 
             if ($prioritySiteId <= 0) {
                 $this->warn('Despacho general en pausa temporal por reescaneo puntual.');
+
                 return self::SUCCESS;
             }
 
             $prioritySite = $siteRepository->findById($prioritySiteId);
+
             if ($prioritySite !== null && $prioritySite->is_active && $prioritySite->is_monitored) {
                 $assetType = $assetSchema->isReady() ? (string) ($prioritySite->asset_type ?? 'unknown') : 'unknown';
                 $strategy = $strategyRouter->dispatch($prioritySite, $assetType);

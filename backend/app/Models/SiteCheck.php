@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -25,10 +26,10 @@ final class SiteCheck extends Model
     ];
 
     protected $casts = [
-        'checked_at'          => 'immutable_datetime',
-        'created_at'          => 'immutable_datetime',
-        'http_code'           => 'integer',
-        'response_time_ms'    => 'integer',
+        'checked_at' => 'immutable_datetime',
+        'created_at' => 'immutable_datetime',
+        'http_code' => 'integer',
+        'response_time_ms' => 'integer',
         'response_size_bytes' => 'integer',
     ];
 
@@ -46,29 +47,28 @@ final class SiteCheck extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<SiteCheck> $query
-     * @return \Illuminate\Database\Eloquent\Builder<SiteCheck>
+     * @param  Builder<SiteCheck>  $query
+     * @return Builder<SiteCheck>
      */
-    public function scopeUp(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeUp(Builder $query): Builder
     {
         return $query->where('status', 'up');
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<SiteCheck> $query
-     * @return \Illuminate\Database\Eloquent\Builder<SiteCheck>
+     * @param  Builder<SiteCheck>  $query
+     * @return Builder<SiteCheck>
      */
-    public function scopeDown(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeDown(Builder $query): Builder
     {
         return $query->where('status', 'down');
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<SiteCheck> $query
-     * @param int $hours
-     * @return \Illuminate\Database\Eloquent\Builder<SiteCheck>
+     * @param  Builder<SiteCheck>  $query
+     * @return Builder<SiteCheck>
      */
-    public function scopeInLastHours(\Illuminate\Database\Eloquent\Builder $query, int $hours): \Illuminate\Database\Eloquent\Builder
+    public function scopeInLastHours(Builder $query, int $hours): Builder
     {
         return $query->where('checked_at', '>=', now()->subHours($hours));
     }

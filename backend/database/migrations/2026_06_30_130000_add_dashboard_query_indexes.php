@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -14,25 +16,25 @@ return new class extends Migration
         Schema::table('sites', function (Blueprint $table): void {
             $table->index(
                 ['is_active', 'is_monitored', 'current_status', 'site_group_id', 'priority'],
-                'idx_sites_dashboard_filters'
+                'idx_sites_dashboard_filters',
             );
             $table->index(
                 ['is_active', 'is_monitored', 'last_checked_at', 'priority'],
-                'idx_sites_check_dispatch'
+                'idx_sites_check_dispatch',
             );
         });
 
         Schema::table('site_checks', function (Blueprint $table): void {
             $table->index(
                 ['checked_at', 'site_id', 'status'],
-                'idx_site_checks_recent_timeline'
+                'idx_site_checks_recent_timeline',
             );
         });
 
         Schema::table('alerts', function (Blueprint $table): void {
             $table->index(
                 ['status', 'severity', 'triggered_at', 'site_id'],
-                'idx_alerts_open_feed'
+                'idx_alerts_open_feed',
             );
         });
     }

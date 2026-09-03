@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Support\Str;
 
 return [
@@ -69,7 +71,7 @@ return [
 
     'prefix' => env(
         'HORIZON_PREFIX',
-        Str::slug(env('APP_NAME', 'laravel'), '_').'_horizon:'
+        Str::slug(env('APP_NAME', 'laravel'), '_').'_horizon:',
     ),
 
     /*
@@ -103,6 +105,7 @@ return [
         'redis:monitoring-tech' => 90,
         'redis:monitoring-headers' => 60,
         'redis:monitoring-alerts' => 30,
+        'redis:heavy' => 180,
     ],
 
     /*
@@ -280,6 +283,19 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+        'supervisor-monitoring-heavy' => [
+            'connection' => 'redis',
+            'queue' => ['heavy'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 2,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 256,
+            'tries' => 2,
+            'timeout' => 180,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -314,6 +330,11 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 2,
             ],
+            'supervisor-monitoring-heavy' => [
+                'maxProcesses' => 4,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
         ],
 
         'local' => [
@@ -333,6 +354,9 @@ return [
                 'maxProcesses' => 2,
             ],
             'supervisor-monitoring-alerts' => [
+                'maxProcesses' => 1,
+            ],
+            'supervisor-monitoring-heavy' => [
                 'maxProcesses' => 1,
             ],
         ],

@@ -1,11 +1,12 @@
-<template>
-  <main class="min-h-screen bg-slate-950 text-slate-100">
+﻿<template>
+  <main class="min-h-screen bg-sky-50 text-slate-900">
     <section class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <TopNav current="reports" />
       <header class="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p class="text-xs uppercase tracking-[0.22em] text-cyan-300">UDG Sentinel</p>
-          <h1 class="mt-2 text-3xl font-semibold text-white sm:text-4xl">Tablero ejecutivo</h1>
-          <p class="mt-2 max-w-3xl text-sm text-slate-300">
+          <p class="text-xs uppercase tracking-[0.22em] text-cyan-600">UDG Sentinel</p>
+          <h1 class="mt-2 text-fluid-2xl font-semibold text-slate-900">Tablero ejecutivo</h1>
+          <p class="mt-2 max-w-3xl text-sm text-slate-700">
             Visión consolidada de disponibilidad, rendimiento, seguridad y tecnología detectada.
           </p>
         </div>
@@ -14,52 +15,52 @@
             :href="reportUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300"
+            class="rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-800 transition hover:border-cyan-300"
           >
             Abrir reporte ejecutivo
           </a>
-          <p class="text-xs text-slate-400">Actualizado: {{ formatDate(updatedAt) }}</p>
+          <p class="text-xs text-slate-600">Actualizado: {{ formatDate(updatedAt) }}</p>
         </div>
       </header>
 
       <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <article class="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5">
-          <p class="text-xs uppercase tracking-[0.18em] text-emerald-300">Disponibilidad 7 días</p>
-          <p class="mt-3 text-4xl font-semibold text-white">{{ summary.kpis.uptime_7d_pct.toFixed(2) }}%</p>
-          <p class="mt-2 text-xs text-emerald-100/80">Promedio del parque monitoreado</p>
+          <p class="text-xs uppercase tracking-[0.18em] text-emerald-600">Disponibilidad 7 días</p>
+          <p class="mt-3 text-4xl font-semibold text-slate-900">{{ summary.kpis.uptime_7d_pct.toFixed(2) }}%</p>
+          <p class="mt-2 text-xs text-emerald-800/80">Promedio del parque monitoreado</p>
         </article>
         <article class="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-5">
-          <p class="text-xs uppercase tracking-[0.18em] text-amber-300">Disponibilidad 30 días</p>
-          <p class="mt-3 text-4xl font-semibold text-white">{{ summary.kpis.uptime_30d_pct.toFixed(2) }}%</p>
-          <p class="mt-2 text-xs text-amber-100/80">Base mensual para dirección</p>
+          <p class="text-xs uppercase tracking-[0.18em] text-amber-600">Disponibilidad 30 días</p>
+          <p class="mt-3 text-4xl font-semibold text-slate-900">{{ summary.kpis.uptime_30d_pct.toFixed(2) }}%</p>
+          <p class="mt-2 text-xs text-amber-800/80">Base mensual para dirección</p>
         </article>
         <article class="rounded-2xl border border-sky-500/25 bg-sky-500/10 p-5">
-          <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Tiempo de respuesta</p>
-          <p class="mt-3 text-4xl font-semibold text-white">
+          <p class="text-xs uppercase tracking-[0.18em] text-sky-600">Tiempo de respuesta</p>
+          <p class="mt-3 text-4xl font-semibold text-slate-900">
             {{ summary.kpis.avg_response_time_7d_ms !== null ? `${summary.kpis.avg_response_time_7d_ms} ms` : 'Sin datos' }}
           </p>
-          <p class="mt-2 text-xs text-sky-100/80">Promedio de los últimos 7 días</p>
+          <p class="mt-2 text-xs text-sky-800/80">Promedio de los últimos 7 días</p>
         </article>
         <article class="rounded-2xl border border-rose-500/25 bg-rose-500/10 p-5">
-          <p class="text-xs uppercase tracking-[0.18em] text-rose-300">Tecnologías obsoletas</p>
-          <p class="mt-3 text-4xl font-semibold text-white">{{ summary.kpis.obsolete_technologies }}</p>
-          <p class="mt-2 text-xs text-rose-100/80">Heurística operativa de legado</p>
+          <p class="text-xs uppercase tracking-[0.18em] text-rose-600">Tecnologías obsoletas</p>
+          <p class="mt-3 text-4xl font-semibold text-slate-900">{{ summary.kpis.obsolete_technologies }}</p>
+          <p class="mt-2 text-xs text-rose-800/80">Heurística operativa de legado</p>
         </article>
       </section>
 
       <section class="mt-6 grid gap-6 xl:grid-cols-2">
-        <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+        <article class="rounded-3xl border border-sky-200 bg-white/80 p-5">
           <header class="mb-4 flex items-end justify-between gap-4">
             <div>
-              <h2 class="text-lg font-semibold text-white">Disponibilidad por día</h2>
-              <p class="text-sm text-slate-400">Serie de 30 días con datos condensados donde aplica.</p>
+              <h2 class="text-lg font-semibold text-slate-900">Disponibilidad por día</h2>
+              <p class="text-sm text-slate-600">Serie de 30 días con datos condensados donde aplica.</p>
             </div>
             <p class="text-xs text-slate-500">Últimos 30 días</p>
           </header>
 
-          <div v-if="!chartData" class="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-            <div class="h-3 w-48 animate-pulse rounded bg-slate-700/80" />
-            <div class="h-64 animate-pulse rounded-xl bg-slate-800/90" />
+          <div v-if="!chartData" class="space-y-3 rounded-2xl border border-sky-200 bg-sky-50/50 p-4">
+            <div class="h-3 w-48 animate-pulse rounded bg-sky-300/80" />
+            <div class="h-64 animate-pulse rounded-xl bg-sky-200/90" />
           </div>
           <VueApexCharts
             v-else
@@ -70,18 +71,18 @@
           />
         </article>
 
-        <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+        <article class="rounded-3xl border border-sky-200 bg-white/80 p-5">
           <header class="mb-4 flex items-end justify-between gap-4">
             <div>
-              <h2 class="text-lg font-semibold text-white">Rendimiento de servidores</h2>
-              <p class="text-sm text-slate-400">Promedio diario de CPU, RAM y disco.</p>
+              <h2 class="text-lg font-semibold text-slate-900">Rendimiento de servidores</h2>
+              <p class="text-sm text-slate-600">Promedio diario de CPU, RAM y disco.</p>
             </div>
             <p class="text-xs text-slate-500">Últimos 30 días</p>
           </header>
 
-          <div v-if="!chartData" class="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-            <div class="h-3 w-52 animate-pulse rounded bg-slate-700/80" />
-            <div class="h-64 animate-pulse rounded-xl bg-slate-800/90" />
+          <div v-if="!chartData" class="space-y-3 rounded-2xl border border-sky-200 bg-sky-50/50 p-4">
+            <div class="h-3 w-52 animate-pulse rounded bg-sky-300/80" />
+            <div class="h-64 animate-pulse rounded-xl bg-sky-200/90" />
           </div>
           <VueApexCharts
             v-else
@@ -94,18 +95,18 @@
       </section>
 
       <section class="mt-6 grid gap-6 xl:grid-cols-2">
-        <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+        <article class="rounded-3xl border border-sky-200 bg-white/80 p-5">
           <header class="mb-4 flex items-end justify-between gap-4">
             <div>
-              <h2 class="text-lg font-semibold text-white">Puntaje de seguridad</h2>
-              <p class="text-sm text-slate-400">Promedio diario y cantidad de sitios críticos.</p>
+              <h2 class="text-lg font-semibold text-slate-900">Puntaje de seguridad</h2>
+              <p class="text-sm text-slate-600">Promedio diario y cantidad de sitios críticos.</p>
             </div>
             <p class="text-xs text-slate-500">Últimos 30 días</p>
           </header>
 
-          <div v-if="!chartData" class="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-            <div class="h-3 w-52 animate-pulse rounded bg-slate-700/80" />
-            <div class="h-64 animate-pulse rounded-xl bg-slate-800/90" />
+          <div v-if="!chartData" class="space-y-3 rounded-2xl border border-sky-200 bg-sky-50/50 p-4">
+            <div class="h-3 w-52 animate-pulse rounded bg-sky-300/80" />
+            <div class="h-64 animate-pulse rounded-xl bg-sky-200/90" />
           </div>
           <VueApexCharts
             v-else
@@ -116,11 +117,11 @@
           />
         </article>
 
-        <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+        <article class="rounded-3xl border border-sky-200 bg-white/80 p-5">
           <header class="mb-4 flex items-end justify-between gap-4">
             <div>
-              <h2 class="text-lg font-semibold text-white">Alertas prioritarias</h2>
-              <p class="text-sm text-slate-400">Acciones abiertas que merecen revisión ejecutiva.</p>
+              <h2 class="text-lg font-semibold text-slate-900">Alertas prioritarias</h2>
+              <p class="text-sm text-slate-600">Acciones abiertas que merecen revisión ejecutiva.</p>
             </div>
             <p class="text-xs text-slate-500">Actualizado al momento</p>
           </header>
@@ -129,12 +130,12 @@
             <article
               v-for="alertItem in summary.top_alerts"
               :key="alertItem.id"
-              class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4"
+              class="rounded-2xl border border-sky-200 bg-sky-50/50 p-4"
             >
               <div class="flex items-start justify-between gap-4">
                 <div>
-                  <p class="text-sm font-semibold text-white">{{ alertItem.title }}</p>
-                  <p class="mt-1 text-xs text-slate-400">
+                  <p class="text-sm font-semibold text-slate-900">{{ alertItem.title }}</p>
+                  <p class="mt-1 text-xs text-slate-600">
                     {{ alertItem.site?.name ?? 'Sin sitio' }} · {{ alertItem.site?.domain ?? '' }}
                   </p>
                 </div>
@@ -147,11 +148,11 @@
         </article>
       </section>
 
-      <section class="mt-6 rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+      <section class="mt-6 rounded-3xl border border-sky-200 bg-white/80 p-5">
         <header class="mb-4 flex items-end justify-between gap-4">
           <div>
-            <h2 class="text-lg font-semibold text-white">Tecnologías obsoletas detectadas</h2>
-            <p class="text-sm text-slate-400">Se muestran las detecciones con heurística de legado o versión vacía.</p>
+            <h2 class="text-lg font-semibold text-slate-900">Tecnologías obsoletas detectadas</h2>
+            <p class="text-sm text-slate-600">Se muestran las detecciones con heurística de legado o versión vacía.</p>
           </div>
           <p class="text-xs text-slate-500">Top {{ summary.obsolete_technologies.length }}</p>
         </header>
@@ -160,15 +161,19 @@
           <article
             v-for="item in summary.obsolete_technologies"
             :key="`${item.site.domain}-${item.technology.slug ?? item.technology.name}`"
-            class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4"
+            class="rounded-2xl border border-sky-200 bg-sky-50/50 p-4"
           >
-            <p class="text-sm font-semibold text-white">{{ item.technology.display_name }}</p>
-            <p class="mt-1 text-xs text-slate-400">{{ item.site.name }} · {{ item.site.domain }}</p>
-            <p class="mt-3 text-xs uppercase tracking-[0.16em] text-rose-300">{{ item.technology.category_label }}</p>
+            <p class="text-sm font-semibold text-slate-900">{{ item.technology.display_name }}</p>
+            <p class="mt-1 text-xs text-slate-600">{{ item.site.name }} · {{ item.site.domain }}</p>
+            <p class="mt-3 text-xs uppercase tracking-[0.16em] text-rose-600">{{ item.technology.category_label }}</p>
           </article>
         </div>
       </section>
+
+      <AppFooter />
     </section>
+
+    <CookieNotice />
   </main>
 </template>
 
@@ -176,6 +181,9 @@
 import { computed, onMounted, ref } from 'vue'
 import type { ApexOptions } from 'apexcharts'
 import VueApexCharts from 'vue3-apexcharts'
+import TopNav from '@/components/layout/TopNav.vue'
+import AppFooter from '@/components/layout/AppFooter.vue'
+import CookieNotice from '@/components/ui/CookieNotice.vue'
 
 type DailySiteCheckPoint = {
   day: string
@@ -303,13 +311,13 @@ const securitySeries = computed(() => [{
 
 const chartTheme: ApexOptions = {
   chart: {
-    foreColor: '#cbd5e1',
+    foreColor: '#334155',
     toolbar: { show: false },
     zoom: { enabled: false },
     fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
   },
   grid: {
-    borderColor: 'rgba(148, 163, 184, 0.18)',
+    borderColor: 'rgba(100, 116, 139, 0.2)',
   },
   dataLabels: {
     enabled: false,
@@ -319,7 +327,7 @@ const chartTheme: ApexOptions = {
     curve: 'smooth',
   },
   tooltip: {
-    theme: 'dark',
+    theme: 'light',
   },
   xaxis: {
     type: 'category',
@@ -364,17 +372,17 @@ const severityClass = (severity: string): string => {
   const normalized = severity.toLowerCase()
 
   if (normalized === 'critical') {
-    return 'border-rose-400/40 bg-rose-500/10 text-rose-200'
+    return 'border-rose-400/40 bg-rose-500/10 text-rose-700'
   }
 
   if (normalized === 'high') {
-    return 'border-amber-400/40 bg-amber-500/10 text-amber-200'
+    return 'border-amber-400/40 bg-amber-500/10 text-amber-700'
   }
 
   if (normalized === 'medium') {
-    return 'border-yellow-400/40 bg-yellow-500/10 text-yellow-100'
+    return 'border-yellow-400/40 bg-yellow-500/10 text-yellow-800'
   }
 
-  return 'border-slate-500/40 bg-slate-500/10 text-slate-200'
+  return 'border-sky-500/40 bg-sky-500/10 text-slate-800'
 }
 </script>

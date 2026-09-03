@@ -15,6 +15,5 @@ final readonly class CertificateExpiring
         public int $daysRemaining,
         public string $severity,
         public string $checkedAt,
-    ) {
-    }
+    ) {}
 }

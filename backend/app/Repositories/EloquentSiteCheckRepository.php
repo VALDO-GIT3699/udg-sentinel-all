@@ -74,10 +74,10 @@ final class EloquentSiteCheckRepository implements SiteCheckRepositoryInterface
             ->toArray();
 
         return array_merge([
-            'up'       => 0,
-            'down'     => 0,
+            'up' => 0,
+            'down' => 0,
             'degraded' => 0,
-            'timeout'  => 0,
+            'timeout' => 0,
         ], $counts);
     }
 
@@ -112,7 +112,7 @@ final class EloquentSiteCheckRepository implements SiteCheckRepositoryInterface
             ->whereHas('site', static function ($query): void {
                 $query->where('is_active', true)->where('is_monitored', true);
             })
-            ->selectRaw("COUNT(*) as total_checks")
+            ->selectRaw('COUNT(*) as total_checks')
             ->selectRaw("SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END) as down_checks")
             ->selectRaw('AVG(response_time_ms) as avg_latency_ms')
             ->first();

@@ -10,6 +10,7 @@
 *.key
 *.p12
 auth.json
+/docs/security/pass.md
 
 # Dependencias
 /backend/vendor/
@@ -57,6 +58,11 @@ Thumbs.db
 # Docker
 /infrastructure/production/.env
 /infrastructure/docker/.env
+/infrastructure/docker/.env.production
+
+# Respaldos de base de datos (monitoring:backup-database) — contienen datos
+# reales (usuarios, contraseñas hasheadas, etc.), nunca deben ir a git.
+/backend/storage/app/backups/
 
 # Collectors Python
 collectors/__pycache__/

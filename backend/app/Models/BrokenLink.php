@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -24,11 +25,11 @@ final class BrokenLink extends Model
     ];
 
     protected $casts = [
-        'http_code'         => 'integer',
+        'http_code' => 'integer',
         'first_detected_at' => 'immutable_datetime',
-        'last_checked_at'   => 'immutable_datetime',
-        'resolved_at'       => 'immutable_datetime',
-        'is_resolved'       => 'boolean',
+        'last_checked_at' => 'immutable_datetime',
+        'resolved_at' => 'immutable_datetime',
+        'is_resolved' => 'boolean',
     ];
 
     // -----------------------------------------------------------------
@@ -45,19 +46,19 @@ final class BrokenLink extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<BrokenLink> $query
-     * @return \Illuminate\Database\Eloquent\Builder<BrokenLink>
+     * @param  Builder<BrokenLink>  $query
+     * @return Builder<BrokenLink>
      */
-    public function scopeUnresolved(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeUnresolved(Builder $query): Builder
     {
         return $query->where('is_resolved', false);
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<BrokenLink> $query
-     * @return \Illuminate\Database\Eloquent\Builder<BrokenLink>
+     * @param  Builder<BrokenLink>  $query
+     * @return Builder<BrokenLink>
      */
-    public function scopeNotFound(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeNotFound(Builder $query): Builder
     {
         return $query->where('http_code', 404);
     }

@@ -16,6 +16,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Monitoring\Services\MonitoringHttpClientFactory;
+use Modules\Monitoring\Support\MassScanProgress;
 
 final class RunBrokenLinksCheckJob implements ShouldQueue
 {
@@ -56,6 +57,19 @@ final class RunBrokenLinksCheckJob implements ShouldQueue
                 'run_id' => $this->massScanRunId,
                 'error' => $exception->getMessage(),
             ]);
+
+            if (is_string($this->massScanRunId) && $this->massScanRunId !== '') {
+                MassScanProgress::recordFailure(
+                    $this->massScanRunId,
+                    'broken_links',
+                    $this->siteId,
+                    mb_substr($exception->getMessage(), 0, 1000),
+                );
+            }
+        } finally {
+            if (is_string($this->massScanRunId) && $this->massScanRunId !== '') {
+                MassScanProgress::completeTask($this->massScanRunId, 'broken_links', $this->siteId);
+            }
         }
     }
 
@@ -106,7 +120,7 @@ final class RunBrokenLinksCheckJob implements ShouldQueue
                 continue;
             }
 
-            $absoluteUrl = str_starts_with($link, 'http') ? $link : rtrim($site->url, '/') . '/' . ltrim($link, '/');
+            $absoluteUrl = str_starts_with($link, 'http') ? $link : rtrim($site->url, '/').'/'.ltrim($link, '/');
 
             try {
                 $linkResponse = $httpClientFactory

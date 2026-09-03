@@ -33,6 +33,7 @@ final class CsvInventorySourceParser implements InventorySourceParserInterface
             }
 
             $row = [];
+
             foreach ($headers as $index => $header) {
                 $row[$header] = $data[$index] ?? null;
             }

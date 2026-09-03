@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Models;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Modules\Inventory\Models\InventoryReconciliationRow;
 
 final class InventoryReconciliationBatch extends Model
 {
@@ -50,6 +50,6 @@ final class InventoryReconciliationBatch extends Model
 
     public function uploader(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'uploaded_by');
+        return $this->belongsTo(User::class, 'uploaded_by');
     }
 }

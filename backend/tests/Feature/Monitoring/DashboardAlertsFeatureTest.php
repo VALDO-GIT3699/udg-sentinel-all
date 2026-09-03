@@ -19,16 +19,6 @@ final class DashboardAlertsFeatureTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        config([
-            'activitylog.enabled' => false,
-            'activitylog.default_log_name' => 'testing',
-        ]);
-    }
-
     #[Test]
     public function dashboard_shows_open_alerts_for_authorized_user(): void
     {
@@ -284,13 +274,21 @@ final class DashboardAlertsFeatureTest extends TestCase
         $response = $this->actingAs($user)->get(route('monitoring.groups.view', [
             'group' => $group->id,
             'status' => 'down',
-        ]), [
-            'X-Inertia' => 'true',
-            'X-Requested-With' => 'XMLHttpRequest',
-        ]);
+        ]));
 
         $response->assertOk();
-        $response->assertJsonPath('props.sites.data.0.name', 'Portal rectoria');
-        $response->assertJsonPath('props.sites.data.0.current_status', 'down');
+        $response->assertInertia(fn ($page) => $page
+            ->where('sites.data.0.name', 'Portal rectoria')
+            ->where('sites.data.0.current_status', 'down'));
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'activitylog.enabled' => false,
+            'activitylog.default_log_name' => 'testing',
+        ]);
     }
 }

@@ -7,9 +7,9 @@ namespace Modules\Inventory\Services\Classification;
 final readonly class AssetClassificationResult
 {
     /**
-     * @param array<int, array<string, mixed>> $evidence
-     * @param array<string, float> $typeScores
-     * @param array<string, float> $roleScores
+     * @param  array<int, array<string, mixed>>  $evidence
+     * @param  array<string, float>  $typeScores
+     * @param  array<string, float>  $roleScores
      */
     public function __construct(
         public string $assetType,
@@ -24,8 +24,7 @@ final readonly class AssetClassificationResult
         public array $observations,
         public array $recommendations,
         public string $resultHash,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<string, mixed>

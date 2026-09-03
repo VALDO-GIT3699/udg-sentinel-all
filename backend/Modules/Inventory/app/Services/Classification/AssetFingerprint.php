@@ -7,12 +7,12 @@ namespace Modules\Inventory\Services\Classification;
 final readonly class AssetFingerprint
 {
     /**
-     * @param array<string, mixed> $dns
-     * @param array<string, array<int, string>> $httpHeaders
-     * @param array<int, string> $redirectChain
-     * @param array<int, array<string, mixed>> $technologies
-     * @param array<string, mixed> $ssl
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $dns
+     * @param  array<string, array<int, string>>  $httpHeaders
+     * @param  array<int, string>  $redirectChain
+     * @param  array<int, array<string, mixed>>  $technologies
+     * @param  array<string, mixed>  $ssl
+     * @param  array<string, mixed>  $metadata
      */
     public function __construct(
         public int $siteId,
@@ -29,6 +29,5 @@ final readonly class AssetFingerprint
         public array $dns,
         public array $ssl,
         public array $metadata,
-    ) {
-    }
+    ) {}
 }

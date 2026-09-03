@@ -19,7 +19,7 @@ final class SecurityHeadersWeak implements ShouldBroadcastNow
     use SkipsBroadcastWhenUnavailable;
 
     /**
-     * @param string[] $missing  Names of missing/failing headers
+     * @param  string[]  $missing  Names of missing/failing headers
      */
     public function __construct(
         public readonly int $siteId,
@@ -27,8 +27,7 @@ final class SecurityHeadersWeak implements ShouldBroadcastNow
         public readonly string $level,
         public readonly array $missing,
         public readonly string $checkedAt,
-    ) {
-    }
+    ) {}
 
     public function broadcastOn(): Channel
     {
@@ -46,10 +45,10 @@ final class SecurityHeadersWeak implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return [
-            'siteId'    => $this->siteId,
-            'score'     => $this->score,
-            'level'     => $this->level,
-            'missing'   => $this->missing,
+            'siteId' => $this->siteId,
+            'score' => $this->score,
+            'level' => $this->level,
+            'missing' => $this->missing,
             'checkedAt' => $this->checkedAt,
         ];
     }

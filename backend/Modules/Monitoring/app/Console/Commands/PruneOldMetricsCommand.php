@@ -35,7 +35,7 @@ final class PruneOldMetricsCommand extends Command
             'Pruning ejecutado: detalle vivo %d dias, resumen %d dias, retencion %d anos.',
             $keepLiveDays,
             $compactDays,
-            $summaryRetentionYears
+            $summaryRetentionYears,
         ));
 
         return self::SUCCESS;
@@ -83,7 +83,7 @@ ON CONFLICT (site_id, summary_date) DO UPDATE SET
 SQL,
             $compactDays,
             $keepLiveDays,
-            $compactDays
+            $compactDays,
         );
 
         DB::statement($sql);
@@ -131,7 +131,7 @@ ON CONFLICT (server_id, summary_date) DO UPDATE SET
 SQL,
             $compactDays,
             $keepLiveDays,
-            $compactDays
+            $compactDays,
         );
 
         DB::statement($sql);
@@ -176,7 +176,7 @@ ON CONFLICT (site_id, summary_date) DO UPDATE SET
 SQL,
             $compactDays,
             $keepLiveDays,
-            $compactDays
+            $compactDays,
         );
 
         DB::statement($sql);

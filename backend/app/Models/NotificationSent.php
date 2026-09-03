@@ -4,12 +4,20 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 final class NotificationSent extends Model
 {
     public $timestamps = false;
+
+    // La migracion crea la tabla como "notifications_sent" (no
+    // "notification_sents", que es lo que Eloquent adivinaria por
+    // convencion a partir del nombre de esta clase) — sin esto, cualquier
+    // query contra el modelo fallaba con "no such table". Nunca se detecto
+    // porque la tabla seguia en cero filas.
+    protected $table = 'notifications_sent';
 
     protected $fillable = [
         'alert_id',
@@ -20,7 +28,7 @@ final class NotificationSent extends Model
     ];
 
     protected $casts = [
-        'sent_at'    => 'immutable_datetime',
+        'sent_at' => 'immutable_datetime',
         'created_at' => 'immutable_datetime',
     ];
 
@@ -43,19 +51,19 @@ final class NotificationSent extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<NotificationSent> $query
-     * @return \Illuminate\Database\Eloquent\Builder<NotificationSent>
+     * @param  Builder<NotificationSent>  $query
+     * @return Builder<NotificationSent>
      */
-    public function scopeFailed(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeFailed(Builder $query): Builder
     {
         return $query->where('status', 'failed');
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<NotificationSent> $query
-     * @return \Illuminate\Database\Eloquent\Builder<NotificationSent>
+     * @param  Builder<NotificationSent>  $query
+     * @return Builder<NotificationSent>
      */
-    public function scopeSent(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeSent(Builder $query): Builder
     {
         return $query->where('status', 'sent');
     }

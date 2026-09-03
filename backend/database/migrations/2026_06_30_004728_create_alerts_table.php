@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -14,11 +16,11 @@ return new class extends Migration
         Schema::create('alerts', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('site_id')->nullable()
-                  ->constrained('sites')
-                  ->nullOnDelete();
+                ->constrained('sites')
+                ->nullOnDelete();
             $table->foreignId('alert_rule_id')->nullable()
-                  ->constrained('alert_rules')
-                  ->nullOnDelete();
+                ->constrained('alert_rules')
+                ->nullOnDelete();
             $table->string('title', 500);
             $table->text('message')->nullable();
             $table->string('severity', 20)->comment('critical/high/medium/low');
@@ -26,12 +28,12 @@ return new class extends Migration
             $table->timestampTz('triggered_at');
             $table->timestampTz('acknowledged_at')->nullable();
             $table->foreignId('acknowledged_by')->nullable()
-                  ->constrained('users')
-                  ->nullOnDelete();
+                ->constrained('users')
+                ->nullOnDelete();
             $table->timestampTz('resolved_at')->nullable();
             $table->foreignId('resolved_by')->nullable()
-                  ->constrained('users')
-                  ->nullOnDelete();
+                ->constrained('users')
+                ->nullOnDelete();
             $table->json('context')->default('{}');
             $table->timestamps();
 
@@ -48,4 +50,3 @@ return new class extends Migration
         Schema::dropIfExists('alerts');
     }
 };
-

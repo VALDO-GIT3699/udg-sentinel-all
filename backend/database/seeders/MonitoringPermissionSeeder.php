@@ -32,10 +32,15 @@ final class MonitoringPermissionSeeder extends Seeder
         $viewerRole = Role::findOrCreate(MonitoringPermissionMatrix::VIEWER_ROLE, 'web');
         $viewerRole->syncPermissions(MonitoringPermissionMatrix::viewerPermissions());
 
-        $testUser = User::query()->where('email', 'test@example.com')->first();
+        // Cuenta de conveniencia solo de local/testing (ver DatabaseSeeder); si este
+        // seeder se corre solo (p. ej. "db:seed --class=...") en otro entorno, no debe
+        // otorgar admin a una cuenta con contraseña predecible aunque ya exista.
+        if (app()->environment(['local', 'testing'])) {
+            $testUser = User::query()->where('email', 'test@example.com')->first();
 
-        if ($testUser instanceof User) {
-            $testUser->assignRole(MonitoringPermissionMatrix::ADMIN_ROLE);
+            if ($testUser instanceof User) {
+                $testUser->assignRole(MonitoringPermissionMatrix::ADMIN_ROLE);
+            }
         }
 
         $fixedMonitoringUser = User::query()->where('email', 'udgmonitoreo26B')->first();

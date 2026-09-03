@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services\Reconciliation\Parsing;
 
-use Modules\Inventory\Services\Reconciliation\Parsing\InventorySourceParserInterface;
-
 final class MarkdownInventorySourceParser implements InventorySourceParserInterface
 {
     public function supports(string $filePath): bool
@@ -65,6 +63,7 @@ final class MarkdownInventorySourceParser implements InventorySourceParserInterf
             }
 
             $row = [];
+
             foreach ($header as $index => $column) {
                 $row[$column] = $cells[$index] ?? null;
             }
@@ -103,11 +102,13 @@ final class MarkdownInventorySourceParser implements InventorySourceParserInterf
             $tailTokens = array_values(array_slice($tailTokens, 1));
 
             $cms = $tailTokens[0] ?? null;
+
             if ($cms !== null) {
                 $tailTokens = array_values(array_slice($tailTokens, 1));
             }
 
             $serverValue = null;
+
             if ($tailTokens !== []) {
                 $firstToken = (string) ($tailTokens[0] ?? '');
                 $secondToken = (string) ($tailTokens[1] ?? '');
@@ -123,13 +124,16 @@ final class MarkdownInventorySourceParser implements InventorySourceParserInterf
 
             $status = null;
             $statusTokenCount = 0;
+
             foreach ($this->knownStatuses() as $candidate) {
                 $candidateTokens = preg_split('/\s+/u', $candidate) ?: [];
+
                 if ($candidateTokens === []) {
                     continue;
                 }
 
                 $window = array_slice($tailTokens, 0, count($candidateTokens));
+
                 if (mb_strtolower(trim(implode(' ', $window))) === mb_strtolower($candidate)) {
                     $status = $candidate;
                     $statusTokenCount = count($candidateTokens);
@@ -171,7 +175,7 @@ final class MarkdownInventorySourceParser implements InventorySourceParserInterf
     }
 
     /**
-     * @param array<int, array<string, mixed>> $rows
+     * @param  array<int, array<string, mixed>>  $rows
      */
     private function looksLikeInventoryTable(array $rows): bool
     {

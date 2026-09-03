@@ -25,8 +25,7 @@ final class SiteDownDetected implements ShouldBroadcastNow
         public readonly string $severity,
         public readonly ?string $cause,
         public readonly string $detectedAt,
-    ) {
-    }
+    ) {}
 
     public function broadcastOn(): Channel
     {
@@ -44,11 +43,11 @@ final class SiteDownDetected implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return [
-            'siteId'     => $this->siteId,
-            'siteName'   => $this->siteName,
-            'url'        => $this->url,
-            'severity'   => $this->severity,
-            'cause'      => $this->cause,
+            'siteId' => $this->siteId,
+            'siteName' => $this->siteName,
+            'url' => $this->url,
+            'severity' => $this->severity,
+            'cause' => $this->cause,
             'detectedAt' => $this->detectedAt,
         ];
     }

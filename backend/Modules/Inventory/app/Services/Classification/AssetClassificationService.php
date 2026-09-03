@@ -24,8 +24,7 @@ final class AssetClassificationService
         private readonly SiteRepositoryInterface $siteRepository,
         private readonly AssetFingerprintBuilder $assetFingerprintBuilder,
         private readonly AssetIntelligenceSchema $assetSchema,
-    ) {
-    }
+    ) {}
 
     public function classifyAutomatically(Site $site): ?AssetClassificationResult
     {
@@ -40,10 +39,10 @@ final class AssetClassificationService
         }
 
         $engine = new AssetClassificationEngine([
-            new TechnologyFingerprintRule(),
-            new ContentSignatureRule(),
-            new DnsSslRule(),
-            new HostnameHeuristicRule(),
+            new TechnologyFingerprintRule,
+            new ContentSignatureRule,
+            new DnsSslRule,
+            new HostnameHeuristicRule,
         ]);
 
         $fingerprint = $this->assetFingerprintBuilder->build($site);
@@ -63,11 +62,11 @@ final class AssetClassificationService
                     'role' => $result->roleScores,
                 ],
                 'classifier_version' => $result->classifierVersion,
-                    'rule_engine_version' => $result->ruleEngineVersion,
-                    'result_hash' => $result->resultHash,
-                    'rules_used' => $result->rulesUsed,
-                    'observations' => $result->observations,
-                    'recommendations' => $result->recommendations,
+                'rule_engine_version' => $result->ruleEngineVersion,
+                'result_hash' => $result->resultHash,
+                'rules_used' => $result->rulesUsed,
+                'observations' => $result->observations,
+                'recommendations' => $result->recommendations,
                 'classified_at' => now(),
                 'is_current' => true,
             ]);
@@ -111,7 +110,7 @@ final class AssetClassificationService
     }
 
     /**
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      */
     public function setManualClassification(Site $site, array $payload, ?int $userId = null): AssetClassificationResult
     {
@@ -145,7 +144,7 @@ final class AssetClassificationService
             rulesUsed: ['manual_override'],
             observations: ['Clasificacion establecida manualmente por administracion.'],
             recommendations: [],
-            resultHash: hash('sha256', $assetType . '|' . $assetRole . '|' . $confidence . '|' . (string) $notes),
+            resultHash: hash('sha256', $assetType.'|'.$assetRole.'|'.$confidence.'|'.(string) $notes),
         );
 
         DB::transaction(function () use ($site, $result, $userId, $notes): void {

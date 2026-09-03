@@ -21,7 +21,8 @@ final class MonitoringDispatchBehaviorTest extends TestCase
 
         DummyMonitoringJobRecorder::reset();
 
-        $dispatcher = new class () {
+        $dispatcher = new class
+        {
             public function dispatch(string $jobClass, mixed ...$arguments): mixed
             {
                 return $this->dispatchMonitoringJob($jobClass, ...$arguments);
@@ -55,7 +56,8 @@ final class MonitoringDispatchBehaviorTest extends TestCase
 
         DummyMonitoringJobRecorder::reset();
 
-        $dispatcher = new class () {
+        $dispatcher = new class
+        {
             public function dispatch(string $jobClass, mixed ...$arguments): mixed
             {
                 return $this->dispatchMonitoringJob($jobClass, ...$arguments);
@@ -85,7 +87,7 @@ final class MonitoringDispatchBehaviorTest extends TestCase
     #[Test]
     public function monitoring_http_client_uses_hard_timeouts(): void
     {
-        $factory = new MonitoringHttpClientFactory();
+        $factory = new MonitoringHttpClientFactory;
         $request = $factory->make(['X-Test' => '1']);
 
         $reflection = new ReflectionProperty($request, 'options');

@@ -1,5 +1,6 @@
 includes:
     - vendor/larastan/larastan/extension.neon
+    - phpstan-baseline.neon
 
 parameters:
     paths:
@@ -23,9 +24,17 @@ parameters:
 
     # Permitir propiedades dinámicas en modelos Eloquent
     checkModelProperties: true
-    checkMissingIterableValueType: false
 
     ignoreErrors:
-        # Métodos mágicos de Eloquent que PHPStan no puede inferir
-        - '#Call to an undefined method Illuminate\\Database\\Eloquent\\Builder#'
-        - '#PHPDoc tag @var#'
+        # Metodos magicos de Eloquent que PHPStan no puede inferir. Hoy la
+        # EXISTENTE de este patron, por lo que estas reglas no matchean nada
+        # en el codebase actual -pero se dejan activas con
+        # reportUnmatched:false para que sigan protegiendo codigo NUEVO que
+        # dispare el mismo falso positivo, sin que PHPStan se queje de que
+        # "no matchean nada" (eso rompería el build sin ninguna razon real).
+        -
+            message: '#Call to an undefined method Illuminate\\Database\\Eloquent\\Builder#'
+            reportUnmatched: false
+        -
+            message: '#PHPDoc tag @var#'
+            reportUnmatched: false

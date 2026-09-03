@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -22,12 +23,12 @@ final class TrafficMetric extends Model
     ];
 
     protected $casts = [
-        'recorded_at'          => 'immutable_datetime',
-        'created_at'           => 'immutable_datetime',
-        'requests_per_min'     => 'integer',
-        'unique_visitors'      => 'integer',
-        'bandwidth_bytes'      => 'integer',
-        'error_rate_pct'       => 'float',
+        'recorded_at' => 'immutable_datetime',
+        'created_at' => 'immutable_datetime',
+        'requests_per_min' => 'integer',
+        'unique_visitors' => 'integer',
+        'bandwidth_bytes' => 'integer',
+        'error_rate_pct' => 'float',
         'avg_response_time_ms' => 'integer',
     ];
 
@@ -45,11 +46,10 @@ final class TrafficMetric extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<TrafficMetric> $query
-     * @param int $hours
-     * @return \Illuminate\Database\Eloquent\Builder<TrafficMetric>
+     * @param  Builder<TrafficMetric>  $query
+     * @return Builder<TrafficMetric>
      */
-    public function scopeInLastHours(\Illuminate\Database\Eloquent\Builder $query, int $hours): \Illuminate\Database\Eloquent\Builder
+    public function scopeInLastHours(Builder $query, int $hours): Builder
     {
         return $query->where('recorded_at', '>=', now()->subHours($hours));
     }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -29,10 +30,10 @@ final class Alert extends Model
     ];
 
     protected $casts = [
-        'triggered_at'    => 'immutable_datetime',
+        'triggered_at' => 'immutable_datetime',
         'acknowledged_at' => 'immutable_datetime',
-        'resolved_at'     => 'immutable_datetime',
-        'context'         => 'array',
+        'resolved_at' => 'immutable_datetime',
+        'context' => 'array',
     ];
 
     // -----------------------------------------------------------------
@@ -69,38 +70,37 @@ final class Alert extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<Alert> $query
-     * @return \Illuminate\Database\Eloquent\Builder<Alert>
+     * @param  Builder<Alert>  $query
+     * @return Builder<Alert>
      */
-    public function scopeOpen(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeOpen(Builder $query): Builder
     {
         return $query->where('status', 'open');
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<Alert> $query
-     * @return \Illuminate\Database\Eloquent\Builder<Alert>
+     * @param  Builder<Alert>  $query
+     * @return Builder<Alert>
      */
-    public function scopeCritical(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeCritical(Builder $query): Builder
     {
         return $query->where('severity', 'critical');
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<Alert> $query
-     * @return \Illuminate\Database\Eloquent\Builder<Alert>
+     * @param  Builder<Alert>  $query
+     * @return Builder<Alert>
      */
-    public function scopeUnresolved(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeUnresolved(Builder $query): Builder
     {
         return $query->whereIn('status', ['open', 'acknowledged']);
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<Alert> $query
-     * @param string $severity
-     * @return \Illuminate\Database\Eloquent\Builder<Alert>
+     * @param  Builder<Alert>  $query
+     * @return Builder<Alert>
      */
-    public function scopeOfSeverity(\Illuminate\Database\Eloquent\Builder $query, string $severity): \Illuminate\Database\Eloquent\Builder
+    public function scopeOfSeverity(Builder $query, string $severity): Builder
     {
         return $query->where('severity', $severity);
     }
@@ -122,7 +122,7 @@ final class Alert extends Model
     public function acknowledge(int $userId): bool
     {
         return $this->update([
-            'status'          => 'acknowledged',
+            'status' => 'acknowledged',
             'acknowledged_at' => now(),
             'acknowledged_by' => $userId,
         ]);
@@ -131,7 +131,7 @@ final class Alert extends Model
     public function resolve(int $userId): bool
     {
         return $this->update([
-            'status'      => 'resolved',
+            'status' => 'resolved',
             'resolved_at' => now(),
             'resolved_by' => $userId,
         ]);

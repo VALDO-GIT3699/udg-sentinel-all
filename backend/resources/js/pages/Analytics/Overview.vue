@@ -1,49 +1,57 @@
-<template>
-  <main class="min-h-screen bg-slate-950 text-slate-100">
+﻿<template>
+  <main class="min-h-screen bg-sky-50 text-slate-900">
     <section class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <TopNav current="analytics" />
       <header class="mb-8 flex items-end justify-between">
         <div>
-          <p class="text-xs uppercase tracking-[0.2em] text-cyan-300">UDG Sentinel</p>
-          <h1 class="mt-2 text-3xl font-semibold text-white">Centro Analítico Ejecutivo</h1>
-          <p class="mt-2 text-sm text-slate-300">Tendencias, cobertura y riesgo institucional sobre inventario y observabilidad.</p>
+          <p class="text-xs uppercase tracking-[0.2em] text-cyan-600">UDG Sentinel</p>
+          <h1 class="mt-2 text-fluid-2xl font-semibold text-slate-900">Centro Analítico Ejecutivo</h1>
+          <p class="mt-2 text-sm text-slate-700">Tendencias, cobertura y riesgo institucional sobre inventario y observabilidad.</p>
         </div>
-        <p class="text-xs text-slate-400">Actualizado: {{ formatDate(summary.generated_at) }}</p>
+        <p class="text-xs text-slate-600">Actualizado: {{ formatDate(summary.generated_at) }}</p>
       </header>
 
       <section class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <article class="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4" v-for="kpi in kpiCards" :key="kpi.label">
-          <p class="text-[11px] uppercase tracking-[0.16em] text-emerald-200">{{ kpi.label }}</p>
-          <p class="mt-2 text-2xl font-semibold text-white">{{ kpi.value }}</p>
+          <p class="text-[11px] uppercase tracking-[0.16em] text-emerald-700">{{ kpi.label }}</p>
+          <p class="mt-2 text-2xl font-semibold text-slate-900">{{ kpi.value }}</p>
         </article>
       </section>
 
       <section class="mt-6 grid gap-6 xl:grid-cols-2">
-        <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
-          <h2 class="text-lg font-semibold text-white">Top tecnologías</h2>
+        <article class="rounded-3xl border border-sky-200 bg-white/80 p-5">
+          <h2 class="text-lg font-semibold text-slate-900">Top tecnologías</h2>
           <ul class="mt-4 space-y-2 text-sm">
-            <li v-for="item in summary.technology_distribution" :key="item.key" class="flex items-center justify-between rounded-lg border border-slate-800 px-3 py-2">
+            <li v-for="item in summary.technology_distribution" :key="item.key" class="flex items-center justify-between rounded-lg border border-sky-200 px-3 py-2">
               <span>{{ labelize(item.key) }}</span>
-              <span class="font-semibold text-cyan-200">{{ item.total }}</span>
+              <span class="font-semibold text-cyan-700">{{ item.total }}</span>
             </li>
           </ul>
         </article>
 
-        <article class="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
-          <h2 class="text-lg font-semibold text-white">Top activos críticos</h2>
+        <article class="rounded-3xl border border-sky-200 bg-white/80 p-5">
+          <h2 class="text-lg font-semibold text-slate-900">Top activos críticos</h2>
           <ul class="mt-4 space-y-2 text-sm">
-            <li v-for="item in summary.top_critical_assets" :key="item.id" class="rounded-lg border border-slate-800 px-3 py-2">
-              <a :href="`/monitoring/sites/${item.id}/detail`" class="font-semibold text-cyan-200 hover:text-cyan-100">{{ item.name }}</a>
-              <p class="text-xs text-slate-400">{{ item.domain }} · {{ labelize(item.status) }} · {{ labelize(item.asset_type) }}</p>
+            <li v-for="item in summary.top_critical_assets" :key="item.id" class="rounded-lg border border-sky-200 px-3 py-2">
+              <a :href="`/monitoring/sites/${item.id}/detail`" class="font-semibold text-cyan-700 hover:text-cyan-800">{{ item.name }}</a>
+              <p class="text-xs text-slate-600">{{ item.domain }} · {{ labelize(item.status) }} · {{ labelize(item.asset_type) }}</p>
             </li>
           </ul>
         </article>
       </section>
+
+      <AppFooter />
     </section>
+
+    <CookieNotice />
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import TopNav from '@/components/layout/TopNav.vue'
+import AppFooter from '@/components/layout/AppFooter.vue'
+import CookieNotice from '@/components/ui/CookieNotice.vue'
 
 type DistributionItem = { key: string; total: number }
 type CriticalAsset = {

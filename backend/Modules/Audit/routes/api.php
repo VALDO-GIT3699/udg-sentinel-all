@@ -1,8 +1,6 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use Modules\Audit\Http\Controllers\AuditController;
+declare(strict_types=1);
 
-Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
-    Route::apiResource('audits', AuditController::class)->names('audit');
-});
+// El visor de auditoria se sirve como pagina Inertia (ver routes/web.php);
+// no expone una API JSON aparte.

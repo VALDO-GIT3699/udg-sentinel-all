@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -24,9 +25,9 @@ final class DrupalModule extends Model
     ];
 
     protected $casts = [
-        'is_enabled'               => 'boolean',
-        'is_core'                  => 'boolean',
-        'has_update_available'     => 'boolean',
+        'is_enabled' => 'boolean',
+        'is_core' => 'boolean',
+        'has_update_available' => 'boolean',
         'security_update_available' => 'boolean',
     ];
 
@@ -44,28 +45,28 @@ final class DrupalModule extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<DrupalModule> $query
-     * @return \Illuminate\Database\Eloquent\Builder<DrupalModule>
+     * @param  Builder<DrupalModule>  $query
+     * @return Builder<DrupalModule>
      */
-    public function scopeEnabled(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeEnabled(Builder $query): Builder
     {
         return $query->where('is_enabled', true);
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<DrupalModule> $query
-     * @return \Illuminate\Database\Eloquent\Builder<DrupalModule>
+     * @param  Builder<DrupalModule>  $query
+     * @return Builder<DrupalModule>
      */
-    public function scopeWithSecurityUpdates(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeWithSecurityUpdates(Builder $query): Builder
     {
         return $query->where('security_update_available', true);
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<DrupalModule> $query
-     * @return \Illuminate\Database\Eloquent\Builder<DrupalModule>
+     * @param  Builder<DrupalModule>  $query
+     * @return Builder<DrupalModule>
      */
-    public function scopeContrib(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeContrib(Builder $query): Builder
     {
         return $query->where('is_core', false);
     }

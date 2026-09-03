@@ -12,9 +12,7 @@ use Modules\Analytics\Services\AnalyticsService;
 
 final class AnalyticsController extends Controller
 {
-    public function __construct(private readonly AnalyticsService $analyticsService)
-    {
-    }
+    public function __construct(private readonly AnalyticsService $analyticsService) {}
 
     public function index(): Response
     {

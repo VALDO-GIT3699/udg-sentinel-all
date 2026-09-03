@@ -19,11 +19,9 @@ final class SiteStatusChanged implements ShouldBroadcastNow
     use SkipsBroadcastWhenUnavailable;
 
     /**
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      */
-    public function __construct(public readonly int $siteId, public readonly array $payload)
-    {
-    }
+    public function __construct(public readonly int $siteId, public readonly array $payload) {}
 
     public function broadcastOn(): Channel
     {

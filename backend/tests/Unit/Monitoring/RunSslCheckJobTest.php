@@ -89,7 +89,7 @@ final class RunSslCheckJobTest extends TestCase
             'SSL expirado',
             'Certificado SSL expirado hace 3 dias.',
             'critical',
-            'ssl.expired'
+            'ssl.expired',
         );
 
         $warningAlert->refresh();

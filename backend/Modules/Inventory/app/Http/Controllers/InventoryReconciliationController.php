@@ -15,7 +15,7 @@ final class InventoryReconciliationController extends Controller
 
     public function __construct(?InventoryReconciliationService $service = null)
     {
-        $this->service = $service ?? new InventoryReconciliationService();
+        $this->service = $service ?? new InventoryReconciliationService;
     }
 
     public function index()

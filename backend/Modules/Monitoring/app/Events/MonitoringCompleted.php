@@ -16,6 +16,5 @@ final readonly class MonitoringCompleted
         public ?int $httpCode,
         public ?int $responseTimeMs,
         public string $checkedAt,
-    ) {
-    }
+    ) {}
 }

@@ -1,1 +1,102 @@
-﻿
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["main"]
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  test:
+    name: Tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ["8.2"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo, pdo_sqlite, pdo_pgsql, pgsql, mbstring, exif, pcntl, bcmath, gd, zip, intl, opcache, redis
+          coverage: none
+          tools: composer:v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: backend/vendor
+          key: composer-${{ matrix.php }}-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-${{ matrix.php }}-
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+
+      # Los tests usan sqlite en memoria (ver phpunit.xml) — no requieren
+      # levantar Postgres/Redis como servicios. Los mismos 8 fallos
+      # preexistentes y documentados (sintaxis "DISTINCT ON" de Postgres,
+      # incompatible con sqlite) son conocidos y no bloquean el pipeline
+      # nuevo; corregirlos es un trabajo aparte, ya identificado.
+      - name: Run test suite
+        run: php artisan test
+
+  static-analysis:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: backend/vendor
+          key: composer-8.2-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-8.2-
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      # Pint ya esta 100% limpio (350/350 archivos) y PHPStan tiene una
+      # linea base (phpstan-baseline.neon, 1069 hallazgos preexistentes
+      # congelados) — a partir de aqui ambos son bloqueantes: un PR no
+      # puede introducir un nuevo problema de estilo ni un nuevo hallazgo
+      # de tipos, aunque la deuda vieja siga pendiente de limpiarse aparte.
+      - name: Pint (formato de código)
+        run: vendor/bin/pint --test
+
+      - name: PHPStan (análisis estático)
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G

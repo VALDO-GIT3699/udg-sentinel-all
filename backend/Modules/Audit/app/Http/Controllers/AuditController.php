@@ -1,56 +1,64 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Modules\Audit\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
+use Inertia\Response;
+use Spatie\Activitylog\Models\Activity;
 
-class AuditController extends Controller
+final class AuditController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    public function index(Request $request): Response
     {
-        return view('audit::index');
+        $search = trim((string) $request->string('search'));
+        $causerId = $request->integer('causer_id') ?: null;
+        $from = trim((string) $request->string('from'));
+        $to = trim((string) $request->string('to'));
+
+        // "ilike" es exclusivo de Postgres (produccion); en cualquier otro
+        // driver (p. ej. sqlite en tests) es un error de sintaxis. LOWER()+LIKE
+        // funciona igual de bien en ambos y evita duplicar la condicion.
+        $caseInsensitiveLike = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+
+        $entries = Activity::query()
+            ->with('causer:id,name,email')
+            ->when($search !== '', function ($query) use ($search, $caseInsensitiveLike): void {
+                $query->where('description', $caseInsensitiveLike, '%'.$search.'%');
+            })
+            ->when($causerId !== null, fn ($query) => $query->where('causer_id', $causerId))
+            ->when($from !== '', fn ($query) => $query->whereDate('created_at', '>=', $from))
+            ->when($to !== '', fn ($query) => $query->whereDate('created_at', '<=', $to))
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(30)
+            ->withQueryString()
+            ->through(static function (Activity $activity): array {
+                return [
+                    'id' => $activity->id,
+                    'description' => $activity->description,
+                    'causer' => $activity->causer instanceof User ? $activity->causer->name : 'Sistema',
+                    'subject_type' => $activity->subject_type !== null ? class_basename($activity->subject_type) : null,
+                    'subject_id' => $activity->subject_id,
+                    'properties' => $activity->properties?->toArray() ?? [],
+                    'created_at' => optional($activity->created_at)?->toIso8601String(),
+                ];
+            });
+
+        return Inertia::render('Audit/Index', [
+            'entries' => $entries,
+            'filters' => [
+                'search' => $search,
+                'causer_id' => $causerId,
+                'from' => $from,
+                'to' => $to,
+            ],
+            'causers' => User::query()->orderBy('name')->get(['id', 'name']),
+        ]);
     }
-
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        return view('audit::create');
-    }
-
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request) {}
-
-    /**
-     * Show the specified resource.
-     */
-    public function show($id)
-    {
-        return view('audit::show');
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit($id)
-    {
-        return view('audit::edit');
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, $id) {}
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy($id) {}
 }

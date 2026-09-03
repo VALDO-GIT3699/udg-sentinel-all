@@ -1,0 +1,292 @@
+Clasificación,Entidad,Nombre del sitio,Dominio,Sitio activo,CMS,IP servidor,Certificado de seguridad,Estatus proyecto,Comentarios
+AG,CEED,Centro de Estudios Estratégicos Para el Desarrollo,https://ceed.udg.mx/,Sí,WordPress, 148.202.34.55,Activo,2da etapa,
+AG,CEED,Centro de Estudios Estratégicos Para el Desarrollo,https://ceed1.udg.mx/,Sí,D7, 148.202.34.55,Activo,2da etapa,
+AG,CENCULT,Feria Internacional del Libro de Guadalajara,https://www.fil.com.mx/,Sí,Otro,Externo,Activo,2da etapa,Microsoft ASP.NET
+AG,CENCULT,Editorial Universitaria ,https://editorial.udg.mx/,Sí,Otro,Externo,Activo,2da etapa,Magneto
+AG,CENCULT,El Taller del Chucho,https://www.tallerdelchucho.com/,Sí,Wix,148.202.34.54,Activo,2da etapa,
+AG,CENCULT,Librería Carlos Fuentes,https://www.libreriacarlosfuentes.mx/es,Sí,D9,Externo,Activo,2da etapa,
+AG,CENCULT,Ciencia de la Ciudad ,http://www.cslab.udg.mx/,Sí,D9,,Activo,2da etapa,
+AG,CENCULT,UDG 3D,https://udg3d.com/,Sí,Otro,,Activo,2da etapa,Vlive worlds
+AG,CENPRO,Uniterra,https://uniterra.com.mx/,Sí,Otro, 148.202.34.55,Activo,2da etapa,WebFlow
+AG,CENPRO,CENPRO,https://cenproudg.mx/,Sí,WordPress,,Activo,2da etapa,
+AG,CENPRO,Hotel Villa Primavera,https://hotelvillaprimavera.hotelesudg.com/,No,WordPress,Externo,Activo,2da etapa,Página inaccesible
+AG,CENPRO,Operación de Servicios Integrales,https://www.osiudg.mx/,Sí,WordPress,148.202.34.54,Activo,2da etapa,
+AG,CENPRO,PROULEX Centro de Idiomas,https://www.proulex.com/,Sí,WordPress,Externo,Activo,2da etapa,
+AG,CENPRO,Club Deportivo UDG,https://clubdeportivo.hotelesudg.com/,No,WordPress,Externo,Activo,2da etapa,Página Inaccesible
+AG,CENPRO,Hoteles UDG,https://hoteles.udg.mx/,Sí,WordPress,Externo,Activo,2da etapa,
+AG,CENPRO,Centro Cultural Universitario,https://centrocultural.org.mx/,Sí,WordPress,Externo,Activo,2da etapa,
+AG,CGAI,Coordinación General Académica y de Innovación,https://cgai.udg.mx/,Sí,D10,148.202.34.140,Activo,Migrado y publicado,
+AG,CGAI,Coordinación General Académica y de Innovación - PROESDE,https://proesde.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+CUyS,CUAAD,Letras Para Volar,http://www.letrasparavolar.org/,No,WordPress,148.202.248.76,No tiene,,Antes de la CGAI. Página Inaccesible
+AG,CGAI,Coordinación de Internacionalización,https://ci.cgai.udg.mx/,Sí,D10,148.202.248.76,Activo,NA,
+AG,CGAI,Guía de Carreras,https://guiadecarreras.udg.mx/,Sí,WordPress, 148.202.34.55,Activo,,
+AG,CGAI,Red de Educadores en Emprendimiento,http://www.seeprogram.cgci.udg.mx/,Sí,D7,148.202.248.67,No tiene,Eliminado,Ticket 38492
+AG,CGAI,Portal de Programas Educativos de Pregrado,http://www.pregrado.udg.mx/,Sí,D7,148.202.248.67,No tiene,,
+AG,CGAI,Programa Emergente de Atención a Repatriados de Estados Unidos de América,http://www.estudiantesrepatriados.udg.mx/,Sí,D7,148.202.248.67,No tiene,,
+AG,CGAI,Red Regional para el Fomento de la Internacionalización de la Educación Superior en América Latina,http://www.erasmusplusriesal.org/,Sí,D7,148.202.248.67,No tiene,,
+AG,CGAI,Eduroam,http://www.eduroam.udg.mx/,Sí,D7,148.202.248.67,No tiene,,
+AG,CGAI,Sistema de Registro FLIP,https://registro.flip.cga.udg.mx/,Sí,PHP,148.202.248.67,Activo,,
+AG,CGAI,Coordinación de Desarrollo Académico,http://cda.cgai.udg.mx/,Sí,D10,148.202.34.94,No tiene,Eliminado,Ticket 38492
+CUyS,CUAAD,Letras para Volar - APP,http://app.letrasparavolar.org/admin/security/login,Sí,PHP,148.202.248.67,No tiene,,Antes de la CGAI
+AG,CGAI,FLIP - UdeG,https://flip.cga.udg.mx/,Sí,WordPress, ,Activo,,
+AG,CGAI,Cursos Online UDG,http://www.cursosonline.udg.mx/,Sí,D9,,No tiene,,
+AG,CGAI,Coordinacion de Desarrollo Académico ,http://alfresco.udgcloud.udg.mx/,Sí,D10,,No tiene,NA,
+AG,CGAI,Coordinacion de Desarrollo Académico ,http://repositoriosgsi.cgti.udg.mx/,Sí,D10,,No tiene,NA,
+AG,CGAI,Coordinacion de Desarrollo Académico ,http://repositoriosgsi.cgsait.udg.mx/,Sí,D10,,No tiene,NA,
+AG,CGAI,Coordinación de Desarrollo Académico,www.ciep.cga.udg.mx,No,D10,148.202.34.141,No tiene,Eliminado,Página inaccesible Ticket 38492
+AG,CGAI,TUTORÍAS,sit.udg.mx,Sí,Otro,148.202.34.142,No tiene,,JAVA/PLSQL
+AG,CGAI,App - backend,148.202.248.67/webapp,Sí,PHP,,No tiene,,
+AG,CGAI,Sistema del Plan de Acción Tutorial,http://sepat.udg.mx/,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Comunidades Digitales para el Aprendizaje en Educación Superior,www.codaes.udg.mx,No,PHP,,No tiene,,
+CUyS,CUCSH,Cátedra Fernando del Paso,fdelpaso.udg.mx,No,PHP,,No tiene,,Antes de la CGAI. Página Inaccesible
+CUyS,CUCEA,Cátedra UNESCO de la Juventud,148.202.248.71/ciju,No,PHP,,No tiene,,Antes de la CGAI. Página Inaccesible
+AG,CGAI,Programa Institucional de Formación y Actualización Docente,pifad.cgai.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Seminario de Innovación Educativa Liderazgo y Literacidad,seminario.cda.cgai.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Sistema de Justicia Penal,justiciapenal.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Pragmática preuniversitaria,148.202.248.71/pragmatica,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Conectáctica,conectactica.udg.mx,No,PHP,,No tiene,Eliminado,Página Inaccesible Ticket 38492
+AG,CGAI,Copa Leones de Debate,copaleones.udg.mx,No,PHP,,No tiene,Eliminado,Página Inaccesible Ticket 38492
+AG,CGAI,Página de UdeGames,udegames.udg.mx,No,PHP, ,No tiene,,Página Inaccesible
+AG,CGAI,Página del Encuentro para la Innovación y Gestión Académica,encuentro.cda.cgai.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Segundo Encuentro de Movilidad Intercentros: Formación integral y ciudadanía responsable,movilidad.cda.cgai.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Página de administración para la App MiUDG,miudg.cda.cgai.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Página de la App Xpresa UDG,xpresa.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Página de lenguas (Lingu),lingu.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Repositorio temático institucional CIEP,estudios.pregrado.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,SISECA - Sistema de Seguimiento a la Calidad de los Programas Educativos,siseca.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Sistema de Seguimiento a Egresados,egreso.pregrado.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Diplomado en enseñanza y aprendizaje móvil,movil.cda.cgai.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,CREA,crea.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,Red Universitaria de Aprendizaje MX,rua.udg.mx,No,PHP,,No tiene,,Página Inaccesible
+AG,CGAI,PROINNOVA,proinnova.cgai.udg.mx,No,PHP,,No tiene,,
+AG,CGAI,Coordinación General Académica - PROESDE,http://148.202.168.5/proesde,Sí,Otro,,No tiene,,JAVA/MySQL
+AG,CGAI,Coordinación General Académica,http://148.202.34.140/webcgai/www/,Sí,D10,,No tiene,NA,
+AG,CGCE,Titulación UDG,https://titulacion.udg.mx/,Sí,D10,148.202.34.141,Activo,NA,
+AG,CGCE,Coordinación General de Control Escolar,https://escolar.udg.mx/,Sí,D10, 148.202.34.55,Activo,NA,
+AG,CGEDC,Unidad de Servicio Social,https://serviciosocial.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,CGEDC,Nos late servir,https://www.noslateservir.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+AG,CGEDC,Coordinación de Extensión y Acción Social,https://www.ceas.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+AG,CGEDC,MUSA,https://www.musaudg.mx/,Sí,Wix,148.202.248.76,Activo,2da etapa,
+AG,CGEDC,Coordinación General de Extensión y Difusión Cultural,https://cgedc.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,CGEDC,Cultura UDG,https://www.cultura.udg.mx/,Sí,PHP,Externo,Activo,,
+AG,CGEDC,Teatro Diana,https://teatrodiana.com/,Sí,WordPress,,Activo,,
+AG,CGEDC,Artes Escénicas,https://artesescenicas.udg.mx/,Sí,PHP,,Activo,,
+AG,CGEDC,FIM GDL,https://fimgdl.udg.mx/,Sí,WordPress,,Activo,,
+AG,CGEDC,Bienal JA Monroy,https://bienaljamonroy.udg.mx/,Sí,PHP,,Activo,,
+AG,CGEDC,Ballet Folclorico,https://balletfolclorico.udg.mx/,Sí,PHP,,Activo,,
+AG,CGEDC,LUVINA,https://luvina.com.mx/,Sí,WordPress,,Activo,,
+AG,CGEDC,Festival Papirolas,https://papirolas.udg.mx/,Sí,WordPress,,Activo,,
+AG,CGP,Coordinación General de Patrimonio,https://patrimonio.udg.mx/,Sí,D10,148.202.34.141,Activo,NA,
+AG,CGPE,Coordinación General de Planeación y Evaluación CGPE,https://cgpe.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,CGPE,"Plan de Desarrollo Institucional 2019-2025, visión 2030",https://pdi.udg.mx/,No,D9,,No tiene,Eliminado,Ticket 34796
+AG,CGPE,Sistema Institucional de Estadísticas de la Universidad de Guadalajara,https://sie.udg.mx/,Sí,D10,148.202.34.95,Activo,Migrado y publicado,
+AG,CGRH,Coordinación General de Recursos Humanos,https://cgrh.udg.mx/,Sí,D10,148.202.34.141,Activo,NA,
+AG,CGSEG,Coordinación General de Seguridad Universitaria,nd,No,D10,,No tiene,En proceso de migración,Nueva creación
+AG,CGSU,Coordinación de Servicios Estudiantiles,https://estudiantes.udg.mx/,Sí,D10,148.202.34.140,Activo,Migrado y publicado,
+AG,CGSU,Leones Negros,https://leonesnegrosudg.mx/,Sí,D7,148.202.248.76,Activo,Migrado de CMS,
+AG,CGSU,Coordinación General de Servicios a Universitarios,https://cgsu.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,CGSU,CDU,https://cdu.udg.mx/,Sí,WordPress, ,Activo,,
+AG,CGTA,Latin America High Performance Computer Conferencia CARLA 2021,https://carla2021.org/,Sí,D8,148.202.34.141,Activo,,
+AG,CGTA,Sistema Mexicano de Investigación en Psicología,http://www.smip.udg.mx/,Sí,D7,148.202.34.141,No tiene,,
+AG,CGTA,Sistema Integral de Información y Administración Universitaria SIIAU,https://siiau.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,CGTA,Coordinación General de Tecnologías de la Administración,https://cgta.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+AG,CGTA,Universidad de Guadalajara,https://www.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+AG,CGTA,Recrea,http://www.udgtalent.udg.mx/,Sí,D8,148.202.248.67,No tiene,Sistema,
+AG,CGTA,REDMEXSU,http://www.redmexsu.udg.mx/,Sí,D7,148.202.248.67,No tiene,,
+AG,CGTA,Centro de Análisis de Datos y Supercómputo ,http://www.cads.cgti.udg.mx/,No,D8,,No tiene,Eliminado,Ticket 38491
+AG,CGTA,Recrea,http://www.diagnostico.udg.mx/,Sí,D8,,No tiene,Sistema,
+AG,CGTA,CGSAIT Repositorio,https://www.repos.cgsait.udg.mx/,No,D10,148.202.248.76,No tiene,NA,Página Inaccesible
+AG,CGV,Coordinación de Egresados y Ex Alumnos,https://egresados.udg.mx/,Sí,Otro,148.202.248.76,Activo,,
+AG,CGV,Coordinacion General de Vinculación,https://cgv.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+AG,COMSOC,Premio Jalisco de Periodismo,https://premiojaliscoperiodismo.org/,Sí,D10,148.202.34.141,Activo,NA,
+AG,COMSOC,Entre Todas,https://entretodas.udg.mx/inicio,Sí,D10,148.202.34.140,Activo,NA,
+AG,COMSOC,30 Años de la red universitaria,https://aniversariodelared.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+AG,COMSOC,Manada de apoyo,https://manadadeapoyo.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+AG,COMSOC,100 años de la refundación de la UDG,https://centenario.udg.mx/,Sí,D10,,Activo,NA,
+AG,COMSOC,Coordinación General de Comunicación Social,https://comsoc.udg.mx/,Sí,D10,148.202.34.53,Activo,Migrado y publicado,
+AG,COMSOC,Webinars,http://www.webinars.udg.mx/,Sí,D9,148.202.34.141,No tiene,Eliminado,Ticket 38443
+AG,COMSOC,Vacuna,http://vacuna.udg.mx/,Sí,D9,148.202.34.141,No tiene,Eliminado,Ticket 38443
+AG,COMSOC,RUGIDO,https://rugido.udg.mx/,Sí,D10,148.202.34.140,Activo,Migrado y publicado,
+AG,COMSOC,Concurso de Fotografía,http://www.fotostamayo.udg.mx/,Sí,D9,148.202.34.140,No tiene,Eliminado,Ticket 38443
+AG,COMSOC,Regreso,http://www.regresoseguro.udg.mx/,No,D9,,No tiene,Eliminado,Página Inaccesible Ticket 38443
+AG,COMSOC,Acortador de ligas,https://url.udg.mx,Sí,PHP,,Activo,Sistema,
+AG,COMSOC,Butaca,https://butaca.udg.mx,Sí,PHP,,Activo,,Angular (Framework)
+AG,COMSOC,Gaceta UDG,https://www.gaceta.udg.mx/,Sí,WordPress,,Activo,,
+AG,COMSOC,Encuentro Internacional de Periodistas,https://www.eip.udg.mx,Sí,WordPress,,Activo,,
+AG,COMSOC,Sistema de Entrevista,https://entrevistascomsoc.udg.mx/,Sí,PHP,,Activo,Sistema,
+AG,CONTRALORÍA,Contraloría General,https://contraloriageneral.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,CONTRALORÍA,Asociación Mexicana de Órganos de Control y Vigilancia en Instituciones de Educación Superior A.C.,https://amocvies.org.mx/,Sí,WordPress,,Activo,Eliminado,Eliminado por Contraloría
+AG,CTAG,Coordinación de Transparencia y Archivo General,https://www.transparencia.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,CTAG,Nómina - Coordinación de Transparencia y Archivo General,https://www1.transparencia.udg.mx/,No,D9,,No tiene,Eliminado,Página inaccesible
+AG,CTAG,Jornadas archivísticas 2021,http://www.jornadasarchivisticas2021.udg.mx/,Sí,D9,148.202.34.141,No tiene,,
+CUyS,CUAAD,"Centro Universitario de Arte, Arquitectura y Diseño",https://cuaad.udg.mx/,Sí,D7,148.202.102.119,Activo,,
+CUyS,CUAAD,Foro Virtual de Investigación y Educación en Diseño Gráfico,https://foroinvestigacionydgcuaad.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+CUyS,CUAAD,Maestría de Estudios en Literacidad,http://mel.udg.mx/,Sí,D7,148.202.248.67,No tiene,,
+CUyS,CUALTOS,Centro Universitario de los Altos,https://www.cualtos.udg.mx/,Sí,D10,148.202.248.18,Activo,NA,
+CUyS,CUCBA,Centro Universitario de Ciencias Biológicas y Agropecuarias,https://cucba.udg.mx/,Sí,D7,148.202.81.55,Activo,,
+CUyS,CUCBA,Centro de Estudios e Investigaciones en Comportamiento,https://ceic.cucba.udg.mx/,Sí,D10,148.202.248.76,Activo,Migrado y publicado,
+CUyS,CUCBA,Maestría en Ciencias de la Salud Ambiental - CUCBA,http://saludambiental.udg.mx/,Sí,WordPress, 148.202.34.55,No tiene,,
+CUyS,CUCBA,Expo Imagina,http://expoimagina.cucba.udg.mx/,Sí,D7,,No tiene,,
+CUyS,CUCBA,Maestría y Doctorado en Ciencia del Comportamiento Orientación Neurociencias,http://pccn.cucba.udg.mx/,Sí,D7,,No tiene,,
+CUyS,CUCEA,Centro Universitario de Ciencias Económico Administrativas,https://www.cucea.udg.mx/,Sí,Otro,,Activo,,Laravel
+CUyS,CUCEA,Maestría en Tecnologías para el Aprendizaje,https://mta.udg.mx/,Sí,D7,148.202.248.76,No tiene,,
+CUyS,CUCEI,Centro Universitario de Ciencias Exactas e Ingeniería,https://www.cucei.udg.mx/es,Sí,D7,Externo,Activo,,
+CUyS,CUCHAPALA,Centro Universitario de Chapala,https://cuchapala.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+CUyS,CUCIENEGA,Centro Universitario de la Ciénega,https://cuci.udg.mx/,Sí,D7,Externo,Activo,,
+CUyS,CUCOSTA,Centro Universitario de la Costa,https://www.cuc.udg.mx/,Sí,D10,148.202.248.161,Activo,Migrado y publicado,
+CUyS,CUCS,Centro Universitario de Ciencias de la Salud,https://www.cucs.udg.mx/,Sí,D7,Externo,Activo,,
+CUyS,CUCSH,Centro Universitario de Ciencias Sociales y Humanas,https://www.cucsh.udg.mx/,Sí,D10,148.202.248.25,Activo,Migrado y publicado,
+CUyS,CUCSH,Cátedra Latinoamericana Julio Cortázar,https://jcortazar.udg.mx/,Sí,D10,148.202.34.141,Activo,NA,
+CUyS,CUCSH,Cátedra Jorge Alonso,https://catedraalonso-ciesas.udg.mx/,Sí,D7,148.202.248.76,Activo,,
+CUyS,CUCSH,Instituto de Investigaciones en Innovación y Gobernanza,https://gobernanza.udg.mx/,Sí,D10,148.202.248.76,Activo,Migrado y publicado,
+CUyS,CUCSH,Cátedra de Migración Jorge Durand,http://www.catedrajorgedurand.udg.mx/,Sí,D7,148.202.248.67,No tiene,,
+CUyS,CUCSUR,Centro Universitario de la Costa del Sur,https://cucsur.udg.mx/,Sí,D10,,Activo,NA,
+CUyS,CUGDL,Centro Universitario de Guadalajara,https://cugdl.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+CUyS,CULAGOS,Centro Universitario de los Lagos,https://culagos.udg.mx/,Sí,D10,,Activo,Migrado y publicado,
+CUyS,CUNORTE,Centro Universitario del Norte,https://www.cunorte.udg.mx/es,Sí,D10,,Activo,Migrado y publicado,
+CUyS,CUSUR,Centro Universitario del Sur,https://www.cusur.udg.mx/es/,Sí,D10,148.202.119.1,Activo,Migrado y publicado,
+CUyS,CUTLAJO,Centro Universitario de Tlajomulco,https://www.cutlajomulco.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+CUyS,CUTLAQUE,Centro Universitario de Tlaquepaque,https://cutlaquepaque.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+CUyS,CUTONALÁ,Centro Universitario de Tonalá,https://cutonala.udg.mx/,Sí,D10,148.202.34.140,Activo,Migrado y publicado,
+CUyS,CUVALLES,Centro Universitario de los Valles ,https://www.cuvalles.udg.mx/,Sí,D10,Externo,Activo,NA,
+AG,DDU,Unidad para la Igualdad de la UdeG,https://igualdad.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,DDU,DDU,https://ddu.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+AG,DDU,Pazdata,https://pazdata.udg.mx/,Sí,Otro,,Activo,Sistema,Pazdata v0.5.0-beta
+AG,DIRFIN,Dirección de Finanzas,https://finanzas.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,DIRFIN,Sistema de Control de Archivos,http://www.acuerdos.vicerrectoria.udg.mx/acceso/html/index.php,Sí,PHP,148.202.248.67,No tiene,Sistema,
+AG,FUNDACIÓN UdeG,Fundación UDG,https://fundacionudg.org/,Sí,WordPress,Externo,Activo,2da etapa,
+AG,FUNDACIÓN UdeG,Egresados UDGLA,https://egresadosudgla.org/index.php,Sí,PHP,,Activo,,
+AG,FUNDACIÓN UdeG,University of Guadalajara Foundation USA,https://udgusa.tech/,Sí,PHP,Externo,Activo,2da etapa,
+AG,OAG,Oficina de la Abogacía General,https://abogaciageneral.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,OAG,"Alétheia, Anuario de Derechos Humanos y Filosofía del Derecho",http://aletheia-abogaciageneral.udg.mx/,Sí,D9,,No tiene,Solicitud de baja,Ticket 38496
+AG,OSURTC,PodCast Red Radio Universidad de Guadalajara,https://www.podcastudg.com/,Sí,Otro,,Activo,2da etapa,
+AG,OSURTC,UDG TV,https://udgtv.com/,Sí,WordPress,Externo,Activo,2da etapa,
+AG,RG,Contraloría social,http://contraloriasocial.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,RG,XII Consejo de Rectorías,https://cr.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,RG,Consejo Social,https://cs.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,RG,Diplomado en Intervención Emocional,https://diem.udg.mx/user/login,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,RG,Rectoría General,https://rectoria.udg.mx/,Sí,D7,148.202.248.76,Activo,En proceso de migración,
+AG,RG,Enciclopedia Histórica y Biográfica de la Universidad de Guadalajara,https://enciclopedia.udg.mx/,Sí,PHP,148.202.248.67,No tiene,2da etapa,
+AG,SECGRAL,Secretaria General,https://secgral.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,SECGRAL,Comisión Electoral,https://electoral.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,SECGRAL,Consejo General Universitario,http://www.hcgu.udg.mx/,Sí,D7,148.202.143.3,No tiene,En proceso de migración,
+CUyS,SEMS,Escuela Preparatoria de Jalisco,https://prepajalisco.sems.udg.mx/,Sí,D7,148.202.86.12,Activo,,
+CUyS,SEMS,Escuela Preparatoria 2,https://prepa2.sems.udg.mx/,Sí,D7,148.202.86.12,Activo,,
+CUyS,SEMS,Escuela Preparatoria 3,https://prepa3.sems.udg.mx/,Sí,D7,148.202.86.12,Activo,,
+CUyS,SEMS,Escuela Preparatoria 4,https://prepa4.sems.udg.mx/,Sí,D10,148.202.85.3,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria 5,https://www.prepa5.sems.udg.mx/,Sí,D7,148.202.65.105,Activo,,
+CUyS,SEMS,Escuela Preparatoria 6,https://prepa6.sems.udg.mx/,Sí,D10,148.202.86.14,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria 7,http://prepa7.sems.udg.mx/,Sí,D7,148.202.85.3,No tiene,,
+CUyS,SEMS,Escuela Preparatoria 8,http://prepa8.sems.udg.mx/,Sí,D7,148.202.85.13,No tiene,,
+CUyS,SEMS,Escuela Preparatoria 9,https://prepa9.sems.udg.mx/,Sí,D10,148.202.85.15,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria 10,https://prepa10.sems.udg.mx/,Sí,D10,148.202.85.13,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria 11,http://prepa11.sems.udg.mx/,Sí,D7,148.202.85.15,No tiene,,
+CUyS,SEMS,Escuela Preparatoria 12,http://prepa12.sems.udg.mx/,Sí,D7,148.202.85.3,No tiene,,
+CUyS,SEMS,Escuela Preparatoria 13,https://prepa13.sems.udg.mx/,Sí,D10,148.202.85.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria 14,http://prepa14.sems.udg.mx/,Sí,D7,148.202.85.15,No tiene,,
+CUyS,SEMS,Escuela Preparatoria 15,http://prepa15.sems.udg.mx/,Sí,D7,148.202.85.15,No tiene,,
+CUyS,SEMS,Escuela Preparatoria 16,https://prepa16.sems.udg.mx/,Sí,D7,148.202.85.15,Activo,,
+CUyS,SEMS,Escuela Preparatoria 17,https://prepa17.sems.udg.mx/,Sí,D10,148.202.85.13,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria 18,http://prepa18.sems.udg.mx/,Sí,D7,148.202.85.13,No tiene,,
+CUyS,SEMS,Escuela Preparatoria 19,https://prepa19.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria 20,https://prepa20.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria 21,https://prepa21.sems.udg.mx/,Sí,D7,"148,202,86,12",Activo,,
+CUyS,SEMS,Escuela Preparatoria 22,https://prepa22.sems.udg.mx/,Sí,D7,148.202.86.12,Activo,,
+CUyS,SEMS,Escuela Vocacional,https://voca.sems.udg.mx/,Sí,D10,148.202.85.22,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela politécnica de Guadalajara,https://politecnica.sems.udg.mx/,Sí,D7,148.202.85.18,Activo,,
+CUyS,SEMS,Escuela politécnica Ing. Jorge Matute Remus,http://politecnicamatute.sems.udg.mx/,Sí,D7,148.202.85.3,No tiene,,
+CUyS,SEMS,"Escuela Preparatoria de Tonalá ""Dra. Ruth Padilla Muñoz"" ",http://prepatonala.sems.udg.mx/,Sí,D7,148.202.85.15,No tiene,,
+CUyS,SEMS,Escuela Preparatoria Regional de Tonalá Norte,https://prepatonalanorte.sems.udg.mx/,Sí,D7,148.202.85.12,Activo,,
+CUyS,SEMS,Escuela Preparatoria de Tonalá Sur,http://prepatonalasur.sems.udg.mx/,Sí,D7,148.202.85.12,No tiene,,
+CUyS,SEMS,Escuela de Educación Media Superior Wixárika,https://prepawixarika.sems.udg.mx/,Sí,D10,148.202.85.3,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Regional de Educación Media Superior de Ocotlán,https://eremso.sems.udg.mx/,Sí,D7,148.202.86.12,Activo,,
+CUyS,SEMS,Preparatoria de San José del Valle de Tlajomulco de Zúñiga,http://prepasanjosedelvalle.sems.udg.mx/,Sí,D10,148.202.85.3,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Ahualulco de Mercado,http://prepaahualulco.sems.udg.mx/,Sí,D7,148.202.85.13,No tiene,,
+CUyS,SEMS,Preparatoria Regional de Amatitán,http://prepaamatitan.sems.udg.mx/,Sí,D7,148.202.85.15,No tiene,,
+CUyS,SEMS,Escuela Preparatoria Regional de Ameca,http://prepaameca.sems.udg.mx/,Sí,D7,148.202.85.15,No tiene,,
+CUyS,SEMS,Escuela Preparatoria Regional de Arandas,http://prepaarandas.sems.udg.mx/,Sí,D7,148.202.85.13,No tiene,,
+CUyS,SEMS,Escuela Preparatoria Regional de Atotonilco ,https://prepaatotonilco.sems.udg.mx/,Sí,D10,148.202.85.13,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Autlán,https://prepaautlan.sems.udg.mx/,Sí,D7,148.202.86.12,Activo,,
+CUyS,SEMS,Escuela Preparatoria Regional de Casimiro Castillo,https://prepacasimiro.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Chapala,http://prepachapala.sems.udg.mx/,Sí,D7,148.202.85.13,No tiene,,
+CUyS,SEMS,Escuela Preparatoria Regional de Cihuatlán,https://prepacihuatlan.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Ciudad Guzmán,https://prepaciudadguzman.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Cocula,https://prepacocula.sems.udg.mx/,Sí,D10,148.202.85.15,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Colotlán,https://prepacolotlan.sems.udg.mx/,Sí,D10,148.202.85.13,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Degollado,https://prepadegollado.sems.udg.mx/,Sí,D10,148.202.85.13,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de El Arenal,http://prepaelarenal.sems.udg.mx/,Sí,D7,148.202.85.13,No tiene,,
+CUyS,SEMS,Escuela Preparatoria Regional de El Grullo,https://prepaelgrullo.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de El Salto,https://prepaelsalto.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Etzatlán,https://prepaetzatlan.sems.udg.mx/,Sí,D10,148.202.85.13,Activo,Migrado y publicado,
+CUyS,SEMS,Preparatoria Regional de Huejuquilla el Alto,https://prepahuejuquilla.sems.udg.mx/,Sí,D10,148.202.85.15,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Ixtlahuacán de los Membrillos,https://prepaixtlahuacan.sems.udg.mx/,Sí,D10,148.202.85.13,Activo,Migrado y publicado,
+CUyS,SEMS,Preparatoria Regional de Jalostotitlán,https://prepajalostotitlan.sems.udg.mx/,Sí,D10,148.202.85.15,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Jamay,https://prepajamay.sems.udg.mx/,Sí,D10,148.202.85.13,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Jocotepec,https://prepajocotepec.sems.udg.mx/,Sí,D10,148.202.85.3,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de La Barca,https://prepalabarca.sems.udg.mx/,Sí,D10,148.202.85.13,Activo,Migrado y publicado,
+CUyS,SEMS,Preparatoria Regional de Lagos de Moreno,https://prepalagosdemoreno.sems.udg.mx/,Sí,D10,148.202.85.15,Activo,Migrado y publicado,
+CUyS,SEMS,"Preparatoria Regional de Mazamitla ""Lic. José Parres Arias""",https://prepamazamitla.sems.udg.mx/,Sí,D10,,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Puerto Vallarta (PrepaVallartaUDG),http://prepavallarta.sems.udg.mx/,Sí,D7,148.202.85.3,No tiene,,
+CUyS,SEMS,Escuela Preparatoria Regional de San Juan de Los Lagos ,https://prepasanjuan.sems.udg.mx/,Sí,D7,148.202.86.12,Activo,,
+CUyS,SEMS,Escuela Preparatoria Regional de San Martín Hidalgo,https://prepasanmartin.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de San Miguel el Alto,https://prepasanmiguel.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Santa Anita,http://prepasantaanita.sems.udg.mx/,Sí,D7,148.202.85.13,No tiene,,
+CUyS,SEMS,Escuela Preparatoria Regional de Sayula,http://prepasayula.sems.udg.mx/,Sí,D7,148.202.85.13,No tiene,,
+CUyS,SEMS,Escuela Preparatoria Regional de Tala,https://prepatala.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Tamazula,https://prepatamazula.sems.udg.mx/,Sí,D10,148.202.85.13,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Tecolotlán,https://prepatecolotlan.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Tepatitlán de Morelos ,https://prepatepatitlan.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Tequila,https://prepatequila.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Tlajomulco,http://prepatlajomulco.sems.udg.mx/,Sí,D7,148.202.85.13,No tiene,,
+CUyS,SEMS,Preparatoria Regional de Toluquilla,http://prepatoluquilla.sems.udg.mx/,Sí,D7,148.202.85.15,No tiene,,
+CUyS,SEMS,Escuela Preparatoria Regional de Tuxpan,http://prepatuxpan.sems.udg.mx/,Sí,D7,148.202.85.13,No tiene,,
+CUyS,SEMS,Preparatoria Regional de Unión de Tula,https://prepauniondetula.sems.udg.mx/,Sí,D10,148.202.85.15,Activo,Migrado y publicado,
+CUyS,SEMS,Preparatoria Regional de Villa Corona,https://prepavillacorona.sems.udg.mx/,Sí,D10,148.202.85.13,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Zacoalco,https://prepazacoalco.sems.udg.mx/,Sí,D10,148.202.85.3,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Zapotiltic,https://prepazapotiltic.sems.udg.mx/,Sí,D10,148.202.85.5,Activo,Migrado y publicado,
+CUyS,SEMS,Escuela Preparatoria Regional de Zapotlanejo,https://prepazapotlanejo.sems.udg.mx/,Sí,D10,148.202.86.12,Activo,Migrado y publicado,
+CUyS,SEMS,Sistema de Educación Media Superior,https://www.sems.udg.mx/,Sí,D10,148.202.34.72,Activo,Migrado y publicado,
+AG,SIUBI,Biblioteca Digital UDG Universidad de Guadalajara,https://wdg.biblio.udg.mx/index.php,Sí,Otro,,Activo,,Joomla!
+AG,SIUBI,Biblioteca Pública del Estado de Jalisco,https://bpej.udg.mx/,Sí,D9,148.202.34.141,Activo,Migrado de CMS,
+AG,SIUBI,BiblioGuía,http://www.biblioguia.udg.mx/,No,D7,,No tiene,Solicitud de baja,
+AG,SIUBI,Repositorio Institucional de la Universidad de Guadalajara,https://riudg.udg.mx/,Sí,Otro,,Activo,,DSpace
+AG,SIUBI,Sistema Universitario de Bibliotecas,https://bibliotecas.udg.mx/,Sí,D10,148.202.248.76,Activo,NA,
+AG,SIUBI,Biblioteca Iberoamericana,https://bibliotecaiberoamericana.udg.mx/,Sí,PHP,148.202.34.140,Activo,En proceso de migración,
+AG,SIUBI,Centro Documental de Literatura Iberoamericana Carmen Balcell,https://cdcb.udg.mx/,Sí,D10,148.202.34.141,Activo,NA,
+AG,SIUBI,Coloquio Internacional de Bibliotecarios,https://coloquiobibliotecarios.udg.mx/,Sí,D10,148.202.34.141,Activo,NA,
+AG,UDGPlus,Dirección General de Universidad Virtual y Aprendizaje Digital Para Toda la Vida,https://udgplus.udg.mx/,Sí,D10,Externo,Activo,NA,
+AG,VAAD,CGTA y Vicerrectoría Adjunta Administrativa,https://cgsait.udg.mx/,Sí,D10,148.202.34.141,Activo,NA,
+AG,VAAD,Vicerrectoría Adjunta Administrativa,https://vicerrectoriaadministrativa.udg.mx/,Sí,D10,148.202.34.140,Activo,NA,
+AG,VAAI,Vicerrectoría Adjunta Académica y de Investigación,https://vicerrectoriaacademica.udg.mx/,Sí,D10,148.202.34.141,Activo,Migrado y publicado,
+AG,VAAI,Programa Nacional de Posgrados de Calidad,http://www.evaluacionpnpc.udg.mx/,Sí,D6,148.202.248.76,No tiene,,
+AG,VAAI,Programa Nacional de Posgrados de Calidad (Especialidades Médicas),http://www.em.evaluacionpnpc.udg.mx/,Sí,D6,148.202.248.76,No tiene,,
+AG,VAAI,Ciencia UDG,https://cienciaudg.mx/,Sí,D9,,Activo,,
+AG,VE,Vicerrectoría Ejecutiva,https://vicerrectoria.udg.mx/,Sí,D7,148.202.248.76,Activo,En proceso de migración,
+,,,mercaditovecino.udg.mx,No,Otro,,No tiene,,Boostrap
+,,,www.toseconcausa.udg.mx,No,Otro,,No tiene,,Boostrap
+AG,,,coloquiobibliotecarios2020.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,sesioncupia.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,test.anuiesrco.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,test.iam.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,cgedc.cultura.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,cursoswebcgsait.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,www.tusprioridades.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,qacucea.cgti.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,hostd7.udgcloud.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,www.coloquiobibliotecarios2018.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,www.coloquiobibliotecarios2019.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,hosting.udgcloud.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,76-248.servers.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,webhosting.cgti.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,www.c2013.evaluacionpnpc.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,www.icpc2018.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,www.coloquiobibliotecarios2017.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,www.sostenible.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,www.acaton.cutonala.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,qacuaad.cgti.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,redalumni.cgci.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,isum.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,dev.contingente.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,www.clad2018.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,ciaya5.udg.mx,No,,,No tiene,,Página Inaccesible
+AG,,,compostela2019.udg.mx,No,,,No tiene,,Página Inaccesible

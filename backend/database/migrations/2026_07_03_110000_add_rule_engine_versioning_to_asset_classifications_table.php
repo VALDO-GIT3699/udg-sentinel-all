@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -23,6 +25,7 @@ return new class extends Migration
 
             if (! Schema::hasColumn('asset_classifications', 'rules_used')) {
                 $driver = Schema::getConnection()->getDriverName();
+
                 if ($driver === 'pgsql') {
                     $table->jsonb('rules_used')->nullable()->after('result_hash');
                 } else {
@@ -32,6 +35,7 @@ return new class extends Migration
 
             if (! Schema::hasColumn('asset_classifications', 'observations')) {
                 $driver = Schema::getConnection()->getDriverName();
+
                 if ($driver === 'pgsql') {
                     $table->jsonb('observations')->nullable()->after('rules_used');
                 } else {
@@ -41,6 +45,7 @@ return new class extends Migration
 
             if (! Schema::hasColumn('asset_classifications', 'recommendations')) {
                 $driver = Schema::getConnection()->getDriverName();
+
                 if ($driver === 'pgsql') {
                     $table->jsonb('recommendations')->nullable()->after('observations');
                 } else {

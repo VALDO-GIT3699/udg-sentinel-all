@@ -85,14 +85,14 @@ final class SiteService
     {
         $slug = Str::slug($name);
         $base = $slug;
-        $i    = 1;
+        $i = 1;
 
         while (true) {
             $exists = Site::where('slug', $slug)
                 ->when($excludeId !== null, fn ($q) => $q->where('id', '!=', $excludeId))
                 ->exists();
 
-            if (!$exists) {
+            if (! $exists) {
                 break;
             }
 

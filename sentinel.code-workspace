@@ -2,28 +2,28 @@
   "folders": [
     {
       "name": "🔭 UDG Sentinel — Raíz",
-      "path": "."
+      "path": ".",
     },
     {
       "name": "⚙️ Backend (Laravel 12)",
-      "path": "./backend"
+      "path": "./backend",
     },
     {
       "name": "📦 Collectors",
-      "path": "./collectors"
+      "path": "./collectors",
     },
     {
       "name": "🐳 Infraestructura",
-      "path": "./infrastructure"
+      "path": "./infrastructure",
     },
     {
       "name": "📚 Documentación",
-      "path": "./docs"
+      "path": "./docs",
     },
     {
       "name": "🧪 Tests E2E",
-      "path": "./tests"
-    }
+      "path": "./tests",
+    },
   ],
   "settings": {
     // ── Editor ──────────────────────────────────
@@ -40,27 +40,28 @@
     "[php]": {
       "editor.defaultFormatter": "junstyle.php-cs-fixer",
       "editor.formatOnSave": true,
-      "editor.tabSize": 4
+      "editor.tabSize": 4,
     },
     "php.validate.enable": true,
     "php.validate.executablePath": "php",
     "phpcs.enable": true,
     "php-cs-fixer.executablePath": "${workspaceFolder:⚙️ Backend (Laravel 12)}/vendor/bin/pint",
     "intelephense.environment.phpVersion": "8.2.0",
+    "intelephense.environment.includePaths": ["vendor", "backend/vendor"],
     "intelephense.files.maxSize": 5000000,
 
     // ── TypeScript / Vue ──────────────────────────
     "[typescript]": {
       "editor.defaultFormatter": "esbenp.prettier-vscode",
-      "editor.tabSize": 2
+      "editor.tabSize": 2,
     },
     "[vue]": {
       "editor.defaultFormatter": "esbenp.prettier-vscode",
-      "editor.tabSize": 2
+      "editor.tabSize": 2,
     },
     "[javascript]": {
       "editor.defaultFormatter": "esbenp.prettier-vscode",
-      "editor.tabSize": 2
+      "editor.tabSize": 2,
     },
     "typescript.tsdk": "backend/node_modules/typescript/lib",
     "vue.server.hybridMode": true,
@@ -68,11 +69,9 @@
     // ── Tailwind CSS ──────────────────────────────
     "tailwindCSS.includeLanguages": {
       "php": "html",
-      "blade": "html"
+      "blade": "html",
     },
-    "tailwindCSS.experimental.classRegex": [
-      ["class=\"([^\"]*)", "([^\"]+)"]
-    ],
+    "tailwindCSS.experimental.classRegex": [["class=\"([^\"]*)", "([^\"]+)"]],
 
     // ── Git ───────────────────────────────────────
     "git.autofetch": true,
@@ -83,31 +82,30 @@
 
     // ── Archivos ──────────────────────────────────
     "files.exclude": {
-      "**/vendor/**": true,
       "**/node_modules/**": true,
       "**/.git": false,
       "**/storage/framework/**": true,
       "**/bootstrap/cache/**": true,
-      "**/.phpunit.cache": true
+      "**/.phpunit.cache": true,
     },
     "search.exclude": {
       "**/vendor/**": true,
       "**/node_modules/**": true,
       "**/public/build/**": true,
       "**/storage/**": true,
-      "**/bootstrap/cache/**": true
+      "**/bootstrap/cache/**": true,
     },
     "files.watcherExclude": {
       "**/vendor/**": true,
       "**/node_modules/**": true,
       "**/storage/**": true,
-      "**/public/build/**": true
+      "**/public/build/**": true,
     },
     "files.associations": {
       "*.blade.php": "blade",
       ".env.example": "dotenv",
       ".env.*": "dotenv",
-      "docker-compose*.yml": "dockercompose"
+      "docker-compose*.yml": "dockercompose",
     },
 
     // ── Docker ────────────────────────────────────
@@ -116,12 +114,12 @@
     // ── Otros ─────────────────────────────────────
     "emmet.includeLanguages": {
       "blade": "html",
-      "vue": "html"
+      "vue": "html",
     },
     "breadcrumbs.enabled": true,
     "workbench.editor.enablePreview": false,
     "explorer.confirmDelete": false,
-    "explorer.confirmDragAndDrop": false
+    "explorer.confirmDragAndDrop": false,
   },
   "extensions": {
     "recommendations": [
@@ -160,8 +158,8 @@
       "mikestead.dotenv",
       "ms-vscode.vscode-json",
       "redhat.vscode-yaml",
-      "tamasfe.even-better-toml"
-    ]
+      "tamasfe.even-better-toml",
+    ],
   },
   "tasks": {
     "version": "2.0.0",
@@ -171,110 +169,110 @@
         "type": "shell",
         "command": "php artisan serve --host=0.0.0.0 --port=8000",
         "options": {
-          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}",
         },
         "group": "build",
         "presentation": {
           "reveal": "always",
           "panel": "dedicated",
-          "group": "dev-servers"
+          "group": "dev-servers",
         },
         "isBackground": true,
-        "problemMatcher": []
+        "problemMatcher": [],
       },
       {
         "label": "🎨 Vite (assets en tiempo real)",
         "type": "shell",
         "command": "npm run dev",
         "options": {
-          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}",
         },
         "group": "build",
         "presentation": {
           "reveal": "always",
           "panel": "dedicated",
-          "group": "dev-servers"
+          "group": "dev-servers",
         },
         "isBackground": true,
-        "problemMatcher": []
+        "problemMatcher": [],
       },
       {
         "label": "⚡ Laravel Horizon (colas)",
         "type": "shell",
         "command": "php artisan horizon",
         "options": {
-          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}",
         },
         "group": "build",
         "presentation": {
           "reveal": "always",
           "panel": "dedicated",
-          "group": "dev-servers"
+          "group": "dev-servers",
         },
         "isBackground": true,
-        "problemMatcher": []
+        "problemMatcher": [],
       },
       {
         "label": "🧪 Ejecutar pruebas (PHPUnit)",
         "type": "shell",
         "command": "php artisan test --parallel",
         "options": {
-          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}",
         },
         "group": {
           "kind": "test",
-          "isDefault": true
+          "isDefault": true,
         },
         "presentation": {
           "reveal": "always",
-          "panel": "shared"
-        }
+          "panel": "shared",
+        },
       },
       {
         "label": "🔍 PHPStan (análisis estático)",
         "type": "shell",
         "command": "./vendor/bin/phpstan analyse --level=8 --memory-limit=512M",
         "options": {
-          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}",
         },
         "group": "build",
         "presentation": {
           "reveal": "always",
-          "panel": "shared"
-        }
+          "panel": "shared",
+        },
       },
       {
         "label": "💅 Pint (formateo PHP)",
         "type": "shell",
         "command": "./vendor/bin/pint",
         "options": {
-          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}",
         },
-        "group": "build"
+        "group": "build",
       },
       {
         "label": "🐳 Docker: Levantar entorno",
         "type": "shell",
         "command": "docker compose -f infrastructure/docker/docker-compose.yml up -d",
         "options": {
-          "cwd": "${workspaceFolder:🔭 UDG Sentinel — Raíz}"
+          "cwd": "${workspaceFolder:🔭 UDG Sentinel — Raíz}",
         },
         "group": "build",
         "presentation": {
           "reveal": "always",
-          "panel": "shared"
-        }
+          "panel": "shared",
+        },
       },
       {
         "label": "🔄 Migraciones y seeders",
         "type": "shell",
         "command": "php artisan migrate:fresh --seed",
         "options": {
-          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
+          "cwd": "${workspaceFolder:⚙️ Backend (Laravel 12)}",
         },
-        "group": "build"
-      }
-    ]
+        "group": "build",
+      },
+    ],
   },
   "launch": {
     "version": "0.2.0",
@@ -285,9 +283,9 @@
         "request": "launch",
         "port": 9003,
         "pathMappings": {
-          "/var/www/html": "${workspaceFolder:⚙️ Backend (Laravel 12)}"
-        }
-      }
-    ]
-  }
+          "/var/www/html": "${workspaceFolder:⚙️ Backend (Laravel 12)}",
+        },
+      },
+    ],
+  },
 }

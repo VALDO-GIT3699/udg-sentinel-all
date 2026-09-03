@@ -13,19 +13,18 @@ use RuntimeException;
 final class InventorySourceParser
 {
     /**
-     * @param array<int, InventorySourceParserInterface> $parsers
+     * @param  array<int, InventorySourceParserInterface>  $parsers
      */
     public function __construct(
         private readonly array $parsers = [],
-    ) {
-    }
+    ) {}
 
     public static function default(): self
     {
         return new self([
-            new ExcelInventorySourceParser(),
-            new CsvInventorySourceParser(),
-            new MarkdownInventorySourceParser(),
+            new ExcelInventorySourceParser,
+            new CsvInventorySourceParser,
+            new MarkdownInventorySourceParser,
         ]);
     }
 

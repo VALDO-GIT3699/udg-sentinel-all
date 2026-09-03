@@ -6,6 +6,7 @@ namespace Modules\Monitoring\Listeners;
 
 use App\Contracts\Repositories\AlertRepositoryInterface;
 use App\Models\Alert;
+use App\Models\Setting;
 use App\Models\Site;
 use App\Models\User;
 use App\Notifications\SiteDownNotification;
@@ -21,8 +22,7 @@ final class PersistSiteIncidentListener
     public function __construct(
         private readonly AlertRepositoryInterface $alertRepository,
         private readonly AlertNotificationService $alertNotificationService,
-    ) {
-    }
+    ) {}
 
     public function handle(SiteStatusChanged $event): void
     {
@@ -75,7 +75,7 @@ final class PersistSiteIncidentListener
         }
 
         if ($severity === 'critical') {
-            if (! (bool) config('monitoring.notifications.external_enabled', false)) {
+            if (! (bool) Setting::get('monitoring.notifications_enabled', false)) {
                 return;
             }
 
@@ -151,6 +151,7 @@ final class PersistSiteIncidentListener
         $admins = User::query()
             ->active()
             ->role(MonitoringPermissionMatrix::ADMIN_ROLE)
+            ->where('notify_on_critical_incidents', true)
             ->get();
 
         if ($admins->isEmpty()) {

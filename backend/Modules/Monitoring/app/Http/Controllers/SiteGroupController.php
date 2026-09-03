@@ -5,17 +5,15 @@ declare(strict_types=1);
 namespace Modules\Monitoring\Http\Controllers;
 
 use App\Contracts\Repositories\SiteGroupRepositoryInterface;
-use App\Models\SiteGroup;
 use App\Http\Controllers\Controller;
+use App\Models\SiteGroup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 final class SiteGroupController extends Controller
 {
-    public function __construct(private readonly SiteGroupRepositoryInterface $siteGroupRepository)
-    {
-    }
+    public function __construct(private readonly SiteGroupRepositoryInterface $siteGroupRepository) {}
 
     public function index(): JsonResponse
     {

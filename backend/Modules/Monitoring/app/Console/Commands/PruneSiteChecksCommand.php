@@ -23,7 +23,7 @@ final class PruneSiteChecksCommand extends Command
         $this->info(sprintf(
             'Pruning completado: %d registros de site_checks eliminados (retencion: %d dias).',
             $deleted,
-            $days
+            $days,
         ));
 
         return self::SUCCESS;

@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 final class InventoryReconciler
 {
     /**
-     * @param array<string, mixed> $row
+     * @param  array<string, mixed>  $row
      * @return array<string, mixed>
      */
     public function reconcile(array $row): array
@@ -26,7 +26,7 @@ final class InventoryReconciler
             ->where(function ($query) use ($domain, $name, $ip): void {
                 if ($domain !== '') {
                     $query->orWhereRaw('LOWER(domain) = ?', [mb_strtolower($domain)]);
-                    $query->orWhereRaw('LOWER(url) LIKE ?', ['%' . mb_strtolower($domain) . '%']);
+                    $query->orWhereRaw('LOWER(url) LIKE ?', ['%'.mb_strtolower($domain).'%']);
                 }
 
                 if ($name !== '') {
@@ -34,7 +34,7 @@ final class InventoryReconciler
                 }
 
                 if ($ip !== '') {
-                    $query->orWhereRaw('LOWER(COALESCE(notes, \'\')) LIKE ?', ['%' . mb_strtolower($ip) . '%']);
+                    $query->orWhereRaw('LOWER(COALESCE(notes, \'\')) LIKE ?', ['%'.mb_strtolower($ip).'%']);
                 }
             })
             ->limit(10)
@@ -52,22 +52,22 @@ final class InventoryReconciler
 
             if ($domain !== '' && ($domain === $candidateDomain || $domain === $candidateUrl)) {
                 $score += 60;
-                $evidence[] = 'dominio_exacto:' . $candidate->id;
+                $evidence[] = 'dominio_exacto:'.$candidate->id;
             }
 
             if ($name !== '' && $candidateName !== '' && similar_text($name, $candidateName, $similarity) && $similarity >= 75) {
                 $score += 25;
-                $evidence[] = 'nombre:' . $candidate->id;
+                $evidence[] = 'nombre:'.$candidate->id;
             }
 
             if ($cms !== '' && $this->matchTechnologyLabel($cms, (string) ($candidate->asset_type ?? ''))) {
                 $score += 10;
-                $evidence[] = 'cms:' . $candidate->id;
+                $evidence[] = 'cms:'.$candidate->id;
             }
 
             if ($sourceActive && $candidate->is_active) {
                 $score += 5;
-                $evidence[] = 'activo:' . $candidate->id;
+                $evidence[] = 'activo:'.$candidate->id;
             }
 
             if ($score > $bestScore) {
@@ -77,6 +77,7 @@ final class InventoryReconciler
         }
 
         $matchKind = 'new';
+
         if ($bestCandidate !== null) {
             $matchKind = $bestScore >= 70 ? 'exact' : ($bestScore >= 40 ? 'probable' : 'new');
         }

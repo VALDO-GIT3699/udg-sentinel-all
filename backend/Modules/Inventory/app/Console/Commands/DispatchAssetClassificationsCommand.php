@@ -11,7 +11,7 @@ use Modules\Inventory\Jobs\RunAssetClassificationJob;
 
 final class DispatchAssetClassificationsCommand extends Command
 {
-    protected $signature = 'inventory:dispatch-asset-classifications {--limit=200 : Maximo de activos a clasificar}';
+    protected $signature = 'inventory:dispatch-asset-classifications {--limit=300 : Maximo de activos a clasificar}';
 
     protected $description = 'Despacha clasificacion automatica de activos digitales.';
 

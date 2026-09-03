@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -28,14 +29,14 @@ final class ScanResult extends Model
     ];
 
     protected $casts = [
-        'started_at'   => 'immutable_datetime',
+        'started_at' => 'immutable_datetime',
         'completed_at' => 'immutable_datetime',
         'findings_count' => 'integer',
         'critical_count' => 'integer',
-        'high_count'     => 'integer',
-        'medium_count'   => 'integer',
-        'low_count'      => 'integer',
-        'raw_output'   => 'array',
+        'high_count' => 'integer',
+        'medium_count' => 'integer',
+        'low_count' => 'integer',
+        'raw_output' => 'array',
     ];
 
     // -----------------------------------------------------------------
@@ -57,20 +58,19 @@ final class ScanResult extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<ScanResult> $query
-     * @return \Illuminate\Database\Eloquent\Builder<ScanResult>
+     * @param  Builder<ScanResult>  $query
+     * @return Builder<ScanResult>
      */
-    public function scopeCompleted(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeCompleted(Builder $query): Builder
     {
         return $query->where('status', 'completed');
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<ScanResult> $query
-     * @param string $type
-     * @return \Illuminate\Database\Eloquent\Builder<ScanResult>
+     * @param  Builder<ScanResult>  $query
+     * @return Builder<ScanResult>
      */
-    public function scopeOfType(\Illuminate\Database\Eloquent\Builder $query, string $type): \Illuminate\Database\Eloquent\Builder
+    public function scopeOfType(Builder $query, string $type): Builder
     {
         return $query->where('scan_type', $type);
     }

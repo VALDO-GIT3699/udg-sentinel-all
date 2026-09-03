@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -67,7 +69,7 @@ return new class extends Migration
                     $table->index(['asset_classification_source']);
                     $table->index(['asset_last_classified_at']);
                 });
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 // Compatibilidad con re-ejecuciones parciales en drivers sin IF NOT EXISTS.
             }
         }
@@ -85,6 +87,7 @@ return new class extends Migration
             $table->unsignedSmallInteger('confidence_pct')->default(0);
 
             $driver = Schema::getConnection()->getDriverName();
+
             if ($driver === 'pgsql') {
                 $table->jsonb('evidence')->nullable();
                 $table->jsonb('scores')->nullable();
@@ -123,7 +126,7 @@ return new class extends Migration
                 $table->dropIndex(['asset_role']);
                 $table->dropIndex(['asset_classification_source']);
                 $table->dropIndex(['asset_last_classified_at']);
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 // Compatibilidad con estados parciales.
             }
 

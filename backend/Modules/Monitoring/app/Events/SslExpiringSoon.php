@@ -23,8 +23,7 @@ final class SslExpiringSoon implements ShouldBroadcastNow
         public readonly int $daysRemaining,
         public readonly string $severity,
         public readonly string $checkedAt,
-    ) {
-    }
+    ) {}
 
     public function broadcastOn(): Channel
     {
@@ -42,10 +41,10 @@ final class SslExpiringSoon implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return [
-            'siteId'        => $this->siteId,
+            'siteId' => $this->siteId,
             'daysRemaining' => $this->daysRemaining,
-            'severity'      => $this->severity,
-            'checkedAt'     => $this->checkedAt,
+            'severity' => $this->severity,
+            'checkedAt' => $this->checkedAt,
         ];
     }
 }

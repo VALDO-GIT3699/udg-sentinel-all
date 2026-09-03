@@ -9,6 +9,9 @@ final class DetectedTechnology
     private const CATEGORY_LABELS = [
         'cms' => 'Gestor de Contenido (CMS)',
         'framework' => 'Framework',
+        'frontend' => 'Framework frontend',
+        'runtime' => 'Runtime / lenguaje',
+        'static' => 'Sitio estático',
         'infrastructure' => 'Infraestructura',
         'infra' => 'Infraestructura',
         'web-server' => 'Servidor web',
@@ -32,11 +35,10 @@ final class DetectedTechnology
         private readonly ?string $slug = null,
         private readonly bool $isObsolete = false,
         private readonly array $evidence = [],
-    ) {
-    }
+    ) {}
 
     /**
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      */
     public static function fromArray(array $payload): self
     {
@@ -60,41 +62,6 @@ final class DetectedTechnology
             isObsolete: $isObsolete,
             evidence: $evidence,
         );
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function toFrontendArray(): array
-    {
-        $categoryLabel = self::CATEGORY_LABELS[$this->category] ?? ucfirst(str_replace(['-', '_'], ' ', $this->category));
-        $badgeState = $this->resolveBadgeState();
-
-        return [
-            'name' => $this->name,
-            'version' => $this->version,
-            'category' => $this->category,
-            'category_label' => $categoryLabel,
-            'confidence' => $this->confidence,
-            'vendor' => $this->vendor,
-            'slug' => $this->slug,
-            'is_obsolete' => $this->isObsolete,
-            'badge_state' => $badgeState,
-            'badge_label' => $badgeState === 'danger' ? 'Desactualizada' : 'Actualizada',
-            'display_name' => $this->version !== null && $this->version !== ''
-                ? $this->name . ' ' . $this->version
-                : $this->name,
-            'evidence' => $this->evidence,
-        ];
-    }
-
-    private function resolveBadgeState(): string
-    {
-        if ($this->version === null || $this->version === '' || $this->isObsolete) {
-            return 'danger';
-        }
-
-        return 'success';
     }
 
     private static function sanitizeText(mixed $value, ?string $fallback): ?string
@@ -187,5 +154,40 @@ final class DetectedTechnology
         }
 
         return array_values(array_unique($normalized));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toFrontendArray(): array
+    {
+        $categoryLabel = self::CATEGORY_LABELS[$this->category] ?? ucfirst(str_replace(['-', '_'], ' ', $this->category));
+        $badgeState = $this->resolveBadgeState();
+
+        return [
+            'name' => $this->name,
+            'version' => $this->version,
+            'category' => $this->category,
+            'category_label' => $categoryLabel,
+            'confidence' => $this->confidence,
+            'vendor' => $this->vendor,
+            'slug' => $this->slug,
+            'is_obsolete' => $this->isObsolete,
+            'badge_state' => $badgeState,
+            'badge_label' => $badgeState === 'danger' ? 'Desactualizada' : 'Actualizada',
+            'display_name' => $this->version !== null && $this->version !== ''
+                ? $this->name.' '.$this->version
+                : $this->name,
+            'evidence' => $this->evidence,
+        ];
+    }
+
+    private function resolveBadgeState(): string
+    {
+        if ($this->version === null || $this->version === '' || $this->isObsolete) {
+            return 'danger';
+        }
+
+        return 'success';
     }
 }

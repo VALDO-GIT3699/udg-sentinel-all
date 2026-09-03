@@ -24,10 +24,10 @@ final class SiteTechnology extends Model
     ];
 
     protected $casts = [
-        'confidence_pct'   => 'integer',
-        'is_primary'       => 'boolean',
-        'detected_at'      => 'immutable_datetime',
-        'metadata'         => 'array',
+        'confidence_pct' => 'integer',
+        'is_primary' => 'boolean',
+        'detected_at' => 'immutable_datetime',
+        'metadata' => 'array',
     ];
 
     // -----------------------------------------------------------------

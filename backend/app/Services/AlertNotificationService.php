@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Models\Alert;
 use App\Models\NotificationChannel;
 use App\Models\NotificationSent;
+use App\Models\Setting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -14,11 +15,11 @@ use Illuminate\Support\Facades\Mail;
 final class AlertNotificationService
 {
     /**
-     * @param array<string, mixed> $extra
+     * @param  array<string, mixed>  $extra
      */
     public function dispatch(Alert $alert, array $extra = []): void
     {
-        if (! (bool) config('monitoring.notifications.external_enabled', false)) {
+        if (! (bool) Setting::get('monitoring.notifications_enabled', false)) {
             return;
         }
 
@@ -47,14 +48,14 @@ final class AlertNotificationService
     }
 
     /**
-     * @param array<string, mixed> $extra
+     * @param  array<string, mixed>  $extra
      */
     private function sendToChannel(
         Alert $alert,
         NotificationChannel $channel,
         string $siteName,
         string $siteUrl,
-        array $extra
+        array $extra,
     ): void {
         $type = mb_strtolower((string) $channel->type);
 
@@ -64,33 +65,34 @@ final class AlertNotificationService
             } elseif ($type === 'slack' || $type === 'webhook') {
                 $this->sendWebhook($alert, $channel, $siteName, $siteUrl, $extra);
             } else {
-                $this->trackNotification($alert, $channel, 'failed', 'Tipo de canal no soportado: ' . $type);
+                $this->trackNotification($alert, $channel, 'failed', 'Tipo de canal no soportado: '.$type);
             }
         } catch (\Throwable $exception) {
             $this->trackNotification(
                 $alert,
                 $channel,
                 'failed',
-                mb_substr($exception->getMessage(), 0, 1000)
+                mb_substr($exception->getMessage(), 0, 1000),
             );
         }
     }
 
     /**
-     * @param array<string, mixed> $extra
+     * @param  array<string, mixed>  $extra
      */
     private function sendEmail(
         Alert $alert,
         NotificationChannel $channel,
         string $siteName,
         string $siteUrl,
-        array $extra
+        array $extra,
     ): void {
         $config = $channel->config;
         $to = (string) ($config['to'] ?? env('MONITORING_ALERT_EMAIL_TO', ''));
 
         if ($to === '') {
             $this->trackNotification($alert, $channel, 'failed', 'Canal email sin destinatario configurado.');
+
             return;
         }
 
@@ -105,20 +107,21 @@ final class AlertNotificationService
     }
 
     /**
-     * @param array<string, mixed> $extra
+     * @param  array<string, mixed>  $extra
      */
     private function sendWebhook(
         Alert $alert,
         NotificationChannel $channel,
         string $siteName,
         string $siteUrl,
-        array $extra
+        array $extra,
     ): void {
         $config = $channel->config;
         $webhookUrl = (string) ($config['webhook_url'] ?? env('MONITORING_ALERT_SLACK_WEBHOOK', ''));
 
         if ($webhookUrl === '') {
             $this->trackNotification($alert, $channel, 'failed', 'Canal webhook/slack sin URL configurada.');
+
             return;
         }
 
@@ -147,8 +150,9 @@ final class AlertNotificationService
                 $alert,
                 $channel,
                 'failed',
-                'Webhook respondio HTTP ' . $response->status()
+                'Webhook respondio HTTP '.$response->status(),
             );
+
             return;
         }
 
@@ -156,21 +160,21 @@ final class AlertNotificationService
     }
 
     /**
-     * @param array<string, mixed> $extra
+     * @param  array<string, mixed>  $extra
      */
     private function buildMessageBody(Alert $alert, string $siteName, string $siteUrl, array $extra): string
     {
         return implode("\n", [
             'UDG Sentinel - Alerta de monitoreo',
             '-----------------------------------',
-            'Alerta: ' . (string) $alert->title,
-            'Severidad: ' . (string) $alert->severity,
-            'Sitio: ' . ($siteName !== '' ? $siteName : 'No disponible'),
-            'URL: ' . ($siteUrl !== '' ? $siteUrl : 'No disponible'),
-            'Mensaje: ' . (string) ($alert->message ?? 'Sin detalle adicional'),
-            'Contexto: ' . json_encode($alert->context ?? [], JSON_UNESCAPED_UNICODE),
-            'Extra: ' . json_encode($extra, JSON_UNESCAPED_UNICODE),
-            'Disparada: ' . optional($alert->triggered_at)->toIso8601String(),
+            'Alerta: '.(string) $alert->title,
+            'Severidad: '.(string) $alert->severity,
+            'Sitio: '.($siteName !== '' ? $siteName : 'No disponible'),
+            'URL: '.($siteUrl !== '' ? $siteUrl : 'No disponible'),
+            'Mensaje: '.(string) ($alert->message ?? 'Sin detalle adicional'),
+            'Contexto: '.json_encode($alert->context ?? [], JSON_UNESCAPED_UNICODE),
+            'Extra: '.json_encode($extra, JSON_UNESCAPED_UNICODE),
+            'Disparada: '.optional($alert->triggered_at)->toIso8601String(),
         ]);
     }
 

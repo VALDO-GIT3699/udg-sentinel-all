@@ -15,6 +15,5 @@ final readonly class AlertResolved
         public ?int $siteId,
         public string $event,
         public string $resolvedAt,
-    ) {
-    }
+    ) {}
 }

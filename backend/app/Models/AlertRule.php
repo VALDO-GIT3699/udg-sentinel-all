@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -27,10 +28,10 @@ final class AlertRule extends Model
     ];
 
     protected $casts = [
-        'is_active'        => 'boolean',
-        'target_id'        => 'integer',
+        'is_active' => 'boolean',
+        'target_id' => 'integer',
         'cooldown_minutes' => 'integer',
-        'channel_ids'      => 'array',
+        'channel_ids' => 'array',
     ];
 
     // -----------------------------------------------------------------
@@ -47,20 +48,19 @@ final class AlertRule extends Model
     // -----------------------------------------------------------------
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<AlertRule> $query
-     * @return \Illuminate\Database\Eloquent\Builder<AlertRule>
+     * @param  Builder<AlertRule>  $query
+     * @return Builder<AlertRule>
      */
-    public function scopeActive(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<AlertRule> $query
-     * @param string $metric
-     * @return \Illuminate\Database\Eloquent\Builder<AlertRule>
+     * @param  Builder<AlertRule>  $query
+     * @return Builder<AlertRule>
      */
-    public function scopeForMetric(\Illuminate\Database\Eloquent\Builder $query, string $metric): \Illuminate\Database\Eloquent\Builder
+    public function scopeForMetric(Builder $query, string $metric): Builder
     {
         return $query->where('metric_type', $metric);
     }
@@ -72,7 +72,7 @@ final class AlertRule extends Model
     public function appliesToSite(int $siteId): bool
     {
         return match ($this->applies_to) {
-            'all'  => true,
+            'all' => true,
             'site' => $this->target_id === $siteId,
             default => false,
         };
