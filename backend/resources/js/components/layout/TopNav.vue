@@ -22,6 +22,13 @@
     >
       {{ item.label }}
     </Link>
+    <button
+      type="button"
+      class="glass-btn relative z-10 ml-auto rounded-xl border-transparent px-3.5 py-2 text-sm font-medium text-rose-700 hover:-translate-y-0.5 hover:border-rose-300/50 hover:bg-rose-50/60"
+      @click="logout"
+    >
+      Cerrar sesión
+    </button>
   </nav>
 </template>
 
@@ -54,6 +61,8 @@ const items = computed(() => [
 ])
 
 const visibleItems = computed(() => items.value.filter((item) => item.visible))
+
+const logout = () => router.post('/logout')
 
 const navEl = ref<HTMLElement | null>(null)
 const tabEls = new Map<string, HTMLElement>()
